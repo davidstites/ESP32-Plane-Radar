@@ -2,20 +2,12 @@
 
 #include <cstddef>
 
+#include "adsb_parse/aircraft_parser.h"
+
 namespace services::adsb {
 
-struct Aircraft {
-  float lat;
-  float lon;
-  float nose_deg;
-  float track_deg;
-  float gs_knots;
-  char callsign[9];
-  char type[5];
-  char alt[12];
-};
-
-constexpr size_t kMaxAircraft = 64;
+using Aircraft = adsb_parse::Aircraft;
+using adsb_parse::kMaxAircraft;
 
 size_t aircraftCount();
 const Aircraft* aircraftList();

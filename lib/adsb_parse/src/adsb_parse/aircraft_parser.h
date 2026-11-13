@@ -1,0 +1,39 @@
+#pragma once
+
+#include <ArduinoJson.h>
+
+#include <cstddef>
+
+namespace adsb_parse {
+
+struct Aircraft {
+  float lat;
+  float lon;
+  float nose_deg;
+  float track_deg;
+  float gs_knots;
+  char callsign[9];
+  char type[5];
+  char alt[12];
+};
+
+constexpr size_t kMaxAircraft = 64;
+
+/** Outcome of a parse. error is nullptr on success, else a static string. */
+struct ParseResult {
+  bool ok;
+  size_t count;
+  const char* error;
+};
+
+/** Fill filter with the adsb.fi "ac" keys the firmware reads; all others are dropped. */
+void buildAircraftFilter(JsonDocument& filter);
+
+/**
+ * Parse an adsb.fi v3 response held in memory into out (up to capacity entries).
+ * out is only written when the JSON parses.
+ */
+ParseResult parseAircraft(const char* json, size_t len, bool include_ground, Aircraft* out,
+                          size_t capacity);
+
+}  // namespace adsb_parse

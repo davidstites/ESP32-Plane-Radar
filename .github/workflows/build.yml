@@ -1,4 +1,4 @@
-# Build firmware on push/PR; upload binaries as a short-lived artifact.
+# Build firmware and run host unit tests on push/PR; upload binaries as a short-lived artifact.
 name: Build
 
 on:
@@ -12,6 +12,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            .pio/libdeps
+          key: ${{ runner.os }}-pio-native-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-native-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO and gcovr
+        run: pip install --upgrade platformio gcovr
+
+      - name: Unit tests with coverage
+        run: scripts/coverage.sh
+
   firmware:
     runs-on: ubuntu-latest
     steps:
