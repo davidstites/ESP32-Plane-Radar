@@ -88,6 +88,10 @@ As range decreases (or aircraft approach), targets move inward; beyond-ring dots
 - Fetch radius: `ui::radar::fetchRadiusKm()` — scales with the active preset to roughly the screen edge (so rim dots have data)
 - Poll interval: `kAdsbFetchIntervalMs` (5 s) in `config.h`
 - Ground aircraft hidden by default (`kAdsbShowGroundAircraft`)
+- One HTTPS connection is kept alive between polls (HTTP/1.1), so the TLS handshake happens once rather than on every fetch; a dropped connection is re-established automatically
+- The response is parsed as it streams in, keeping only the fields the radar uses (`lib/adsb_parse/`)
+- The server certificate is verified against the embedded CA bundle `data/x509_crt_bundle.bin` (Mozilla's root list plus `data/ca_extra/`). Certificate dates are not checked: Arduino core 2.0.14 builds mbedTLS without time support
+- Refresh the bundle with `scripts/update_ca_bundle.sh`; confirm it still validates adsb.fi with `python3 scripts/check_ca_bundle.py` (needs Python ≥ 3.13 and `cryptography`)
 
 ## Configuration
 
@@ -127,8 +131,16 @@ include/
     adsb_client.h
 data/
   ui_font.vlw              — embedded smooth UI font (Noto Sans Bold)
+  x509_crt_bundle.bin      — embedded CA bundle for adsb.fi TLS verification
+  ca_extra/                — roots added on top of Mozilla's list (see its README)
+lib/
+  adsb_parse/              — Arduino-free HTTP body decoding + aircraft parsing (unit tested)
 scripts/
   build_large_airports.py
+  coverage.sh              — host unit tests + coverage gate
+  update_ca_bundle.sh / check_ca_bundle.py
+test/
+  fixtures/                — recorded adsb.fi responses
 src/
   main.cpp
   data/
@@ -162,6 +174,15 @@ pio device monitor
 - Serial: **115200** baud
 - USB CDC on boot enabled in `platformio.ini` for the Super Mini
 
+### Unit tests
+
+`lib/adsb_parse/` has GoogleTest suites that run on the host (macOS or Linux), no board needed:
+
+```bash
+pio test -e native        # run the tests
+scripts/coverage.sh       # run them and require 100% line coverage (needs gcovr: pipx install gcovr)
+```
+
 ### Web-flashable release image
 
 Single `.bin` for [esptool-js](https://espressif.github.io/esptool-js/) and similar tools (ESP32-C3, 4 MB, flash at **0x0**):
@@ -190,7 +211,7 @@ Put the board in download mode (hold **BOOT**, tap **RESET**), then flash with C
 
 | Workflow | When | Output |
 |----------|------|--------|
-| [Build](.github/workflows/build.yml) | Push / PR to `main` | Artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
+| [Build](.github/workflows/build.yml) | Push / PR to `main` | Host unit tests with coverage gate; artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
 | [Release](.github/workflows/release.yml) | Git tag `v*` (e.g. `v1.0.0`) | GitHub Release asset `plane-radar-v1.0.0.bin` + `.sha256` |
 
 To ship a version users can download:
