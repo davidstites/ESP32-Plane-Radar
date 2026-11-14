@@ -46,6 +46,10 @@ void pollNetwork() {
   }
 }
 
+static_assert(adsb_parse::kHttpErrorConnectionRefused == HTTPC_ERROR_CONNECTION_REFUSED &&
+                  adsb_parse::kHttpErrorNotConnected == HTTPC_ERROR_NOT_CONNECTED,
+              "retry_policy.h HTTPClient codes out of date");
+
 int performGetWithPoll(HTTPClient& http) {
   http.setConnectTimeout(kConnectAttemptMs);
   const unsigned long deadline = millis() + kRequestTimeoutMs;
@@ -55,8 +59,7 @@ int performGetWithPoll(HTTPClient& http) {
     if (code > 0) {
       return code;
     }
-    if (code != HTTPC_ERROR_CONNECTION_REFUSED &&
-        code != HTTPC_ERROR_NOT_CONNECTED) {
+    if (!adsb_parse::shouldKeepTryingToConnect(code, s_client.lastError(nullptr, 0))) {
       return code;
     }
     delay(5);
