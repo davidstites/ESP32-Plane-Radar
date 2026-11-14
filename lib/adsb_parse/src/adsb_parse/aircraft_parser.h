@@ -6,6 +6,8 @@
 
 namespace adsb_parse {
 
+class BodyReader;
+
 struct Aircraft {
   float lat;
   float lon;
@@ -34,6 +36,13 @@ void buildAircraftFilter(JsonDocument& filter);
  * out is only written when the JSON parses.
  */
 ParseResult parseAircraft(const char* json, size_t len, bool include_ground, Aircraft* out,
+                          size_t capacity);
+
+/**
+ * Parse an adsb.fi v3 response straight from an HTTP body, then drain the body so
+ * the connection can be reused. out is only written when the JSON parses.
+ */
+ParseResult parseAircraft(BodyReader& body, bool include_ground, Aircraft* out,
                           size_t capacity);
 
 }  // namespace adsb_parse

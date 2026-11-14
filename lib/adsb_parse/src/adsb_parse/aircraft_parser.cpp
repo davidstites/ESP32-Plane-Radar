@@ -3,6 +3,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <utility>
+
+#include "adsb_parse/body_reader.h"
 
 namespace adsb_parse {
 
@@ -140,6 +143,21 @@ size_t extractAircraft(JsonDocument& doc, bool include_ground, Aircraft* out,
   return n;
 }
 
+/** Filtered deserialize of input (ArduinoJson input args), then extract into out. */
+template <typename... TInput>
+ParseResult parseFiltered(bool include_ground, Aircraft* out, size_t capacity,
+                          TInput&&... input) {
+  JsonDocument filter;
+  buildAircraftFilter(filter);
+  JsonDocument doc;
+  const DeserializationError err = deserializeJson(doc, std::forward<TInput>(input)...,
+                                                   DeserializationOption::Filter(filter));
+  if (err) {
+    return {false, 0, err.c_str()};
+  }
+  return {true, extractAircraft(doc, include_ground, out, capacity), nullptr};
+}
+
 }  // namespace
 
 void buildAircraftFilter(JsonDocument& filter) {
@@ -152,15 +170,14 @@ void buildAircraftFilter(JsonDocument& filter) {
 
 ParseResult parseAircraft(const char* json, size_t len, bool include_ground, Aircraft* out,
                           size_t capacity) {
-  JsonDocument filter;
-  buildAircraftFilter(filter);
-  JsonDocument doc;
-  const DeserializationError err =
-      deserializeJson(doc, json, len, DeserializationOption::Filter(filter));
-  if (err) {
-    return {false, 0, err.c_str()};
-  }
-  return {true, extractAircraft(doc, include_ground, out, capacity), nullptr};
+  return parseFiltered(include_ground, out, capacity, json, len);
+}
+
+ParseResult parseAircraft(BodyReader& body, bool include_ground, Aircraft* out,
+                          size_t capacity) {
+  const ParseResult result = parseFiltered(include_ground, out, capacity, body);
+  body.drain();
+  return result;
 }
 
 }  // namespace adsb_parse
