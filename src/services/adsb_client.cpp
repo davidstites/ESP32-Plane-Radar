@@ -2,8 +2,12 @@
 
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <lwip/sockets.h>
+
+#include <cerrno>
 
 #include "adsb_parse/body_reader.h"
+#include "adsb_parse/connection_policy.h"
 #include "adsb_parse/retry_policy.h"
 #include "config.h"
 
@@ -17,7 +21,7 @@ namespace {
 constexpr char kApiBase[] = "https://opendata.adsb.fi/api/v3/lat/";
 constexpr float kKmPerNm = 1.852f;
 constexpr int kConnectAttemptMs = 200;
-constexpr unsigned long kRequestTimeoutMs = 10000;
+using adsb_parse::kRequestTimeoutMs;
 
 Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
@@ -77,15 +81,58 @@ adsb_parse::BodyFraming responseFraming(HTTPClient& http) {
   return adsb_parse::BodyFraming::kUntilClose;
 }
 
+/** True when the server has closed s_client (FIN or error); assumes no decrypted bytes wait. */
+bool peerHungUp() {
+  uint8_t probe = 0;
+  const int n = recv(s_client.fd(), &probe, 1, MSG_PEEK | MSG_DONTWAIT);
+  const bool would_block = n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK);
+  return adsb_parse::socketClosed(s_client.connected(), n, would_block);
+}
+
 /** Reads what the socket already has; never blocks (BodyReader idles between calls). */
-int readAvailable(WiFiClient* stream, uint8_t* buf, size_t len) {
-  const int available = stream->available();
+int readAvailable(uint8_t* buf, size_t len) {
+  const int available = s_client.available();
   if (available > 0) {
     const size_t want = static_cast<size_t>(available) < len ? available : len;
-    const int n = stream->read(buf, want);
+    const int n = s_client.read(buf, want);
     return n < 0 ? -1 : n;
   }
-  return stream->connected() ? 0 : -1;
+  if (available < 0) {
+    return -1;
+  }
+  return peerHungUp() ? -1 : 0;
+}
+
+/** Body reader for the current response, polling the network while it waits. */
+adsb_parse::BodyReader makeBodyReader() {
+  return adsb_parse::BodyReader(
+      [](uint8_t* buf, size_t len) { return readAvailable(buf, len); },
+      responseFraming(s_http), s_http.getSize(),
+      [] { return static_cast<uint32_t>(millis()); },
+      [] {
+        pollNetwork();
+        delay(1);
+      },
+      kRequestTimeoutMs);
+}
+
+/** After a non-200 result: keep the connection when its response ends cleanly. */
+void finishFailedResponse(int code) {
+  switch (adsb_parse::errorBodyAction(code, responseFraming(s_http))) {
+    case adsb_parse::ErrorBodyAction::kKeep:
+      break;
+    case adsb_parse::ErrorBodyAction::kDrain: {
+      adsb_parse::BodyReader body = makeBodyReader();
+      if (!body.drain()) {
+        s_client.stop();
+      }
+      break;
+    }
+    case adsb_parse::ErrorBodyAction::kClose:
+      s_client.stop();
+      break;
+  }
+  s_http.end();
 }
 
 float kmToNauticalMiles(float km) { return km / kKmPerNm; }
@@ -109,43 +156,32 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   url += String(dist_nm, 1);
 
   configureHttpOnce();
-  const bool reused = s_client.connected();
+  bool reused = s_client.connected();
+  if (reused && s_client.available() == 0 && peerHungUp()) {
+    Serial.println("adsb: server closed the kept-alive connection, reconnecting");
+    s_client.stop();
+    reused = false;
+  }
   if (!s_http.begin(s_client, url)) {
     Serial.println("adsb: http.begin failed");
     return false;
   }
 
-  s_http.setTimeout(kRequestTimeoutMs);
+  s_http.setTimeout(static_cast<uint16_t>(adsb_parse::headerTimeoutMs(reused)));
   int code = performGetWithPoll(s_http);
   if (adsb_parse::shouldRetryOnFreshConnection(code, reused)) {
     Serial.printf("adsb: kept-alive connection failed (%d), reconnecting\n", code);
     s_client.stop();
+    s_http.setTimeout(static_cast<uint16_t>(kRequestTimeoutMs));
     code = performGetWithPoll(s_http);
   }
   if (code != HTTP_CODE_OK) {
     Serial.printf("adsb: HTTP %d\n", code);
-    s_client.stop();
-    s_http.end();
+    finishFailedResponse(code);
     return false;
   }
 
-  WiFiClient* stream = s_http.getStreamPtr();
-  if (stream == nullptr) {
-    Serial.println("adsb: connection lost before body");
-    s_client.stop();
-    s_http.end();
-    return false;
-  }
-
-  adsb_parse::BodyReader body(
-      [stream](uint8_t* buf, size_t len) { return readAvailable(stream, buf, len); },
-      responseFraming(s_http), s_http.getSize(),
-      [] { return static_cast<uint32_t>(millis()); },
-      [] {
-        pollNetwork();
-        delay(1);
-      },
-      kRequestTimeoutMs);
+  adsb_parse::BodyReader body = makeBodyReader();
 
   const adsb_parse::ParseResult result = adsb_parse::parseAircraft(
       body, config::kAdsbShowGroundAircraft, s_aircraft, kMaxAircraft);

@@ -265,6 +265,23 @@ TEST(BodyReaderTest, DrainAfterPartialReadCompletes) {
   EXPECT_EQ(reader.read(), -1);
 }
 
+TEST(BodyReaderTest, DrainsWholeErrorBodyWithoutReading) {
+  const std::string body = "{\"error\":\"rate limited\"}";
+  FakeSource chunked_src(chunked(body, 10));
+  FakeClock clock;
+  BodyReader chunked_reader = makeReader(chunked_src, clock);
+  EXPECT_TRUE(chunked_reader.drain());
+  EXPECT_TRUE(chunked_reader.reusable());
+  EXPECT_EQ(chunked_src.pos, chunked_src.data.size());
+
+  FakeSource length_src(body + "NEXT");
+  BodyReader length_reader =
+      makeReader(length_src, clock, BodyFraming::kContentLength, static_cast<long>(body.size()));
+  EXPECT_TRUE(length_reader.drain());
+  EXPECT_TRUE(length_reader.reusable());
+  EXPECT_EQ(length_src.pos, body.size());
+}
+
 namespace {
 
 ParseResult parseStream(FakeSource& src, Aircraft* out, BodyStatus* status,
