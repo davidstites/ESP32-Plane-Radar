@@ -34,11 +34,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install PlatformIO and gcovr
-        run: pip install --upgrade platformio gcovr
+      - name: Install PlatformIO, gcovr and cryptography
+        run: pip install --upgrade platformio gcovr cryptography
 
       - name: Unit tests with coverage
         run: scripts/coverage.sh
+
+      - name: CA bundle check script tests
+        run: python -m unittest discover -s scripts/tests -v
 
   firmware:
     runs-on: ubuntu-latest

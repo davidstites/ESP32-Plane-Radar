@@ -91,7 +91,7 @@ As range decreases (or aircraft approach), targets move inward; beyond-ring dots
 - One HTTPS connection is kept alive between polls (HTTP/1.1), so the TLS handshake happens once rather than on every fetch; a dropped connection is re-established automatically
 - The response is parsed as it streams in, keeping only the fields the radar uses (`lib/adsb_parse/`)
 - The server certificate is verified against the embedded CA bundle `data/x509_crt_bundle.bin` (Mozilla's root list plus `data/ca_extra/`). Certificate dates are not checked: Arduino core 2.0.14 builds mbedTLS without time support
-- Refresh the bundle with `scripts/update_ca_bundle.sh`; confirm it still validates adsb.fi with `python3 scripts/check_ca_bundle.py` (needs Python ≥ 3.13 and `cryptography`)
+- Refresh the bundle with `scripts/update_ca_bundle.sh`; confirm it still validates adsb.fi with `python3 scripts/check_ca_bundle.py` (needs Python ≥ 3.13 and `cryptography`). The script models how the device's mbedTLS builds the chain; its offline tests run with `python3 -m unittest discover -s scripts/tests`
 
 ## Configuration
 
@@ -211,7 +211,7 @@ Put the board in download mode (hold **BOOT**, tap **RESET**), then flash with C
 
 | Workflow | When | Output |
 |----------|------|--------|
-| [Build](.github/workflows/build.yml) | Push / PR to `main` | Host unit tests with coverage gate; artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
+| [Build](.github/workflows/build.yml) | Push / PR to `main` | Host unit tests with coverage gate, CA check script tests; artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
 | [Release](.github/workflows/release.yml) | Git tag `v*` (e.g. `v1.0.0`) | GitHub Release asset `plane-radar-v1.0.0.bin` + `.sha256` |
 
 To ship a version users can download:
