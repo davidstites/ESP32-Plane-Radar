@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run host unit tests and enforce 100% line coverage of lib/adsb_parse.
+# Run host unit tests and enforce 100% line coverage of the Arduino-free libraries in lib/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -11,5 +11,5 @@ if [[ "$(uname)" == "Darwin" ]]; then
   gcov_args=(--gcov-executable "xcrun llvm-cov gcov")
 fi
 
-gcovr --root . --filter 'lib/adsb_parse/' "${gcov_args[@]}" \
+gcovr --root . --filter 'lib/' "${gcov_args[@]}" \
   --fail-under-line 100 --print-summary --txt-metric line .pio/build/native

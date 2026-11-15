@@ -135,6 +135,7 @@ data/
   ca_extra/                — roots added on top of Mozilla's list (see its README)
 lib/
   adsb_parse/              — Arduino-free HTTP body decoding + aircraft parsing (unit tested)
+  radar_geo/               — Arduino-free lat/lon → km offsets and screen projection (unit tested)
 scripts/
   build_large_airports.py
   coverage.sh              — host unit tests + coverage gate
@@ -176,7 +177,7 @@ pio device monitor
 
 ### Unit tests
 
-`lib/adsb_parse/` has GoogleTest suites that run on the host (macOS or Linux), no board needed:
+The libraries in `lib/` have GoogleTest suites that run on the host (macOS or Linux), no board needed:
 
 ```bash
 pio test -e native        # run the tests
