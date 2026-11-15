@@ -33,14 +33,14 @@ void buildAircraftFilter(JsonDocument& filter);
 
 /**
  * Parse an adsb.fi v3 response held in memory into out (up to capacity entries).
- * out is only written when the JSON parses.
+ * Fails unless the JSON parses and has an "ac" array; out is only written on success.
  */
 ParseResult parseAircraft(const char* json, size_t len, bool include_ground, Aircraft* out,
                           size_t capacity);
 
 /**
  * Parse an adsb.fi v3 response straight from an HTTP body, then drain the body so
- * the connection can be reused. out is only written when the JSON parses.
+ * the connection can be reused. Same success rule as the in-memory overload.
  */
 ParseResult parseAircraft(BodyReader& body, bool include_ground, Aircraft* out,
                           size_t capacity);

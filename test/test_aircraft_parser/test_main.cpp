@@ -135,14 +135,30 @@ TEST(AircraftParserTest, AltitudeTag) {
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2})").alt, "");
 }
 
-TEST(AircraftParserTest, NullAcReturnsZero) {
+TEST(AircraftParserTest, EmptyAcArrayReturnsZero) {
+  Aircraft out[1] = {};
+  const ParseResult r = parse(R"({"ac":[],"now":1})", out);
+  EXPECT_TRUE(r.ok);
+  EXPECT_EQ(r.count, 0u);
+}
+
+TEST(AircraftParserTest, MissingAcFails) {
+  Aircraft out[1] = {};
+  const ParseResult r = parse(R"({"msg":"rate limited"})", out);
+  EXPECT_FALSE(r.ok);
+  EXPECT_STREQ(r.error, "no ac array");
+  EXPECT_EQ(r.count, 0u);
+}
+
+TEST(AircraftParserTest, NonArrayAcFails) {
   Aircraft out[1] = {};
   ParseResult r = parse(R"({"ac":null})", out);
-  EXPECT_TRUE(r.ok);
-  EXPECT_EQ(r.count, 0u);
-  r = parse("{}", out);
-  EXPECT_TRUE(r.ok);
-  EXPECT_EQ(r.count, 0u);
+  EXPECT_FALSE(r.ok);
+  EXPECT_STREQ(r.error, "no ac array");
+  r = parse(R"({"ac":{"lat":1,"lon":2}})", out);
+  EXPECT_FALSE(r.ok);
+  r = parse("[]", out);
+  EXPECT_FALSE(r.ok);
 }
 
 TEST(AircraftParserTest, CapsAtCapacity) {

@@ -155,6 +155,10 @@ ParseResult parseFiltered(bool include_ground, Aircraft* out, size_t capacity,
   if (err) {
     return {false, 0, err.c_str()};
   }
+  // A 200 without "ac" (e.g. an error object) is not an empty sky; don't clear the radar.
+  if (!doc["ac"].is<JsonArray>()) {
+    return {false, 0, "no ac array"};
+  }
   return {true, extractAircraft(doc, include_ground, out, capacity), nullptr};
 }
 
