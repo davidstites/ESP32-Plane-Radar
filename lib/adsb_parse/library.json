@@ -1,0 +1,10 @@
+{
+  "name": "adsb_parse",
+  "version": "1.0.0",
+  "description": "Arduino-free adsb.fi response decoding and aircraft extraction",
+  "platforms": "*",
+  "frameworks": "*",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^7.4.2"
+  }
+}

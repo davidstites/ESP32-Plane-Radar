@@ -11,7 +11,7 @@ Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (
 1. **Wi‑Fi setup** (if needed) — captive portal on AP **`PlaneRadar-Setup`**
 2. **Radar** — live aircraft from [adsb.fi](https://opendata.adsb.fi/) on a sonar-style grid
 
-After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (~5 s).
+After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (~3 s).
 
 ## Controls (BOOT, GPIO 9, active LOW)
 
@@ -86,8 +86,12 @@ As range decreases (or aircraft approach), targets move inward; beyond-ring dots
 
 - Source: `https://opendata.adsb.fi/api/v3/`
 - Fetch radius: `ui::radar::fetchRadiusKm()` — scales with the active preset to roughly the screen edge (so rim dots have data)
-- Poll interval: `kAdsbFetchIntervalMs` (5 s) in `config.h`
+- Poll interval: `kAdsbFetchIntervalMs` (3 s) in `config.h`
 - Ground aircraft hidden by default (`kAdsbShowGroundAircraft`)
+- One HTTPS connection is kept alive between polls (HTTP/1.1), so the TLS handshake happens once rather than on every fetch; a dropped connection is re-established automatically
+- The response is parsed as it streams in, keeping only the fields the radar uses (`lib/adsb_parse/`)
+- The server certificate is verified against the embedded CA bundle `data/x509_crt_bundle.bin` (Mozilla's root list plus `data/ca_extra/`). Certificate dates are not checked: Arduino core 2.0.14 builds mbedTLS without time support
+- Refresh the bundle with `scripts/update_ca_bundle.sh`; confirm it still validates adsb.fi with `python3 scripts/check_ca_bundle.py` (needs Python ≥ 3.13 and `cryptography`). The script models how the device's mbedTLS builds the chain; its offline tests run with `python3 -m unittest discover -s scripts/tests`
 
 ## Configuration
 
@@ -110,6 +114,7 @@ Range presets: `include/ui/radar_range.h` (`kRangePresets`).
 include/
   config.h
   hardware/
+    boot_button.h
     lgfx_config.hpp
     display.h
     display_font.h
@@ -127,8 +132,17 @@ include/
     adsb_client.h
 data/
   ui_font.vlw              — embedded smooth UI font (Noto Sans Bold)
+  x509_crt_bundle.bin      — embedded CA bundle for adsb.fi TLS verification
+  ca_extra/                — roots added on top of Mozilla's list (see its README)
+lib/
+  adsb_parse/              — Arduino-free HTTP body decoding + aircraft parsing (unit tested)
+  radar_geo/               — Arduino-free lat/lon → km offsets and screen projection (unit tested)
 scripts/
   build_large_airports.py
+  coverage.sh              — host unit tests + coverage gate
+  update_ca_bundle.sh / check_ca_bundle.py
+test/
+  fixtures/                — recorded adsb.fi responses
 src/
   main.cpp
   data/
@@ -162,6 +176,15 @@ pio device monitor
 - Serial: **115200** baud
 - USB CDC on boot enabled in `platformio.ini` for the Super Mini
 
+### Unit tests
+
+The libraries in `lib/` have GoogleTest suites that run on the host (macOS or Linux), no board needed:
+
+```bash
+pio test -e native        # run the tests
+scripts/coverage.sh       # run them and require 100% line coverage (needs gcovr: pipx install gcovr)
+```
+
 ### Web-flashable release image
 
 Single `.bin` for [esptool-js](https://espressif.github.io/esptool-js/) and similar tools (ESP32-C3, 4 MB, flash at **0x0**):
@@ -190,7 +213,7 @@ Put the board in download mode (hold **BOOT**, tap **RESET**), then flash with C
 
 | Workflow | When | Output |
 |----------|------|--------|
-| [Build](.github/workflows/build.yml) | Push / PR to `main` | Artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
+| [Build](.github/workflows/build.yml) | Push / PR to `main` | Host unit tests with coverage gate, CA check script tests; artifact `plane-radar-supermini` (merged + split `.bin` files, ~90 days) |
 | [Release](.github/workflows/release.yml) | Git tag `v*` (e.g. `v1.0.0`) | GitHub Release asset `plane-radar-v1.0.0.bin` + `.sha256` |
 
 To ship a version users can download:

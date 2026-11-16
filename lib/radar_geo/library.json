@@ -1,0 +1,7 @@
+{
+  "name": "radar_geo",
+  "version": "1.0.0",
+  "description": "Arduino-free flat-earth offsets and radar screen projection",
+  "platforms": "*",
+  "frameworks": "*"
+}

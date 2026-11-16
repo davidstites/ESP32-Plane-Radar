@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstring>
 
+#include <radar_geo/radar_geo.h>
+
 #include "config.h"
 #include "hardware/display.h"
 #include "hardware/display_font.h"
@@ -160,8 +162,7 @@ void eraseSpinnerDots() {
 }
 
 void drawSpinnerDots() {
-  constexpr float kDegToRad = 0.01745329252f;
-  const float head_rad = s_spinner_angle_deg * kDegToRad;
+  const float head_rad = s_spinner_angle_deg * radar_geo::kDegToRad;
 
   for (int i = 0; i < kSpinnerDotCount; ++i) {
     const float a = head_rad - static_cast<float>(i) * (6.283185307f / kSpinnerDotCount);

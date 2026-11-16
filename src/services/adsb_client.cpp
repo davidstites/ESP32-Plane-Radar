@@ -2,12 +2,17 @@
 
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <lwip/sockets.h>
 
-#include <ArduinoJson.h>
+#include <cerrno>
 
-#include <cstring>
-
+#include "adsb_parse/body_reader.h"
+#include "adsb_parse/connection_policy.h"
+#include "adsb_parse/retry_policy.h"
 #include "config.h"
+
+extern const uint8_t _binary_data_x509_crt_bundle_bin_start[] asm(
+    "_binary_data_x509_crt_bundle_bin_start");
 
 namespace services::adsb {
 
@@ -16,17 +21,38 @@ namespace {
 constexpr char kApiBase[] = "https://opendata.adsb.fi/api/v3/lat/";
 constexpr float kKmPerNm = 1.852f;
 constexpr int kConnectAttemptMs = 200;
-constexpr unsigned long kRequestTimeoutMs = 10000;
+using adsb_parse::kRequestTimeoutMs;
 
 Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
 PollFn s_poll_fn = nullptr;
+
+// One TLS client and HTTP client for the life of the program: with keep-alive the
+// TLS session (and its ~40 KB of mbedTLS buffers) survives between fetches.
+WiFiClientSecure s_client;
+HTTPClient s_http;
+bool s_http_configured = false;
+
+void configureHttpOnce() {
+  if (s_http_configured) {
+    return;
+  }
+  static const char* kCollectedHeaders[] = {"Transfer-Encoding"};
+  s_client.setCACertBundle(_binary_data_x509_crt_bundle_bin_start);
+  s_http.setReuse(true);
+  s_http.collectHeaders(kCollectedHeaders, 1);
+  s_http_configured = true;
+}
 
 void pollNetwork() {
   if (s_poll_fn != nullptr) {
     s_poll_fn();
   }
 }
+
+static_assert(adsb_parse::kHttpErrorConnectionRefused == HTTPC_ERROR_CONNECTION_REFUSED &&
+                  adsb_parse::kHttpErrorNotConnected == HTTPC_ERROR_NOT_CONNECTED,
+              "retry_policy.h HTTPClient codes out of date");
 
 int performGetWithPoll(HTTPClient& http) {
   http.setConnectTimeout(kConnectAttemptMs);
@@ -37,8 +63,7 @@ int performGetWithPoll(HTTPClient& http) {
     if (code > 0) {
       return code;
     }
-    if (code != HTTPC_ERROR_CONNECTION_REFUSED &&
-        code != HTTPC_ERROR_NOT_CONNECTED) {
+    if (!adsb_parse::shouldKeepTryingToConnect(code, s_client.lastError(nullptr, 0))) {
       return code;
     }
     delay(5);
@@ -46,156 +71,71 @@ int performGetWithPoll(HTTPClient& http) {
   return HTTPC_ERROR_READ_TIMEOUT;
 }
 
-bool readResponseBodyWithPoll(HTTPClient& http, String& payload) {
-  WiFiClient* stream = http.getStreamPtr();
-  if (stream == nullptr) {
-    return false;
+adsb_parse::BodyFraming responseFraming(HTTPClient& http) {
+  if (http.header("Transfer-Encoding").equalsIgnoreCase("chunked")) {
+    return adsb_parse::BodyFraming::kChunked;
   }
-
-  const int content_length = http.getSize();
-  if (content_length > 0) {
-    payload.reserve(static_cast<unsigned>(content_length + 1));
+  if (http.getSize() >= 0) {
+    return adsb_parse::BodyFraming::kContentLength;
   }
+  return adsb_parse::BodyFraming::kUntilClose;
+}
 
-  uint8_t buffer[512];
-  const unsigned long deadline = millis() + kRequestTimeoutMs;
-  while (millis() < deadline) {
-    pollNetwork();
-    const int available = stream->available();
-    if (available > 0) {
-      const int to_read =
-          available > static_cast<int>(sizeof(buffer)) ? static_cast<int>(sizeof(buffer))
-                                                       : available;
-      const int read_bytes = stream->readBytes(buffer, to_read);
-      if (read_bytes > 0) {
-        payload.concat(reinterpret_cast<const char*>(buffer),
-                       static_cast<unsigned>(read_bytes));
+/** True when the server has closed s_client (FIN or error); assumes no decrypted bytes wait. */
+bool peerHungUp() {
+  uint8_t probe = 0;
+  const int n = recv(s_client.fd(), &probe, 1, MSG_PEEK | MSG_DONTWAIT);
+  const bool would_block = n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK);
+  return adsb_parse::socketClosed(s_client.connected(), n, would_block);
+}
+
+/** Reads what the socket already has; never blocks (BodyReader idles between calls). */
+int readAvailable(uint8_t* buf, size_t len) {
+  const int available = s_client.available();
+  if (available > 0) {
+    const size_t want = static_cast<size_t>(available) < len ? available : len;
+    const int n = s_client.read(buf, want);
+    return n < 0 ? -1 : n;
+  }
+  if (available < 0) {
+    return -1;
+  }
+  return peerHungUp() ? -1 : 0;
+}
+
+/** Body reader for the current response, polling the network while it waits. */
+adsb_parse::BodyReader makeBodyReader() {
+  return adsb_parse::BodyReader(
+      [](uint8_t* buf, size_t len) { return readAvailable(buf, len); },
+      responseFraming(s_http), s_http.getSize(),
+      [] { return static_cast<uint32_t>(millis()); },
+      [] {
+        pollNetwork();
+        delay(1);
+      },
+      kRequestTimeoutMs);
+}
+
+/** After a non-200 result: keep the connection when its response ends cleanly. */
+void finishFailedResponse(int code) {
+  switch (adsb_parse::errorBodyAction(code, responseFraming(s_http))) {
+    case adsb_parse::ErrorBodyAction::kKeep:
+      break;
+    case adsb_parse::ErrorBodyAction::kDrain: {
+      adsb_parse::BodyReader body = makeBodyReader();
+      if (!body.drain()) {
+        s_client.stop();
       }
-    }
-    if (content_length > 0 &&
-        static_cast<int>(payload.length()) >= content_length) {
       break;
     }
-    if (!http.connected() && stream->available() <= 0) {
+    case adsb_parse::ErrorBodyAction::kClose:
+      s_client.stop();
       break;
-    }
-    delay(1);
   }
-
-  return payload.length() > 0;
+  s_http.end();
 }
 
 float kmToNauticalMiles(float km) { return km / kKmPerNm; }
-
-bool readJsonFloat(const JsonObject& obj, const char* key, float* out) {
-  if (obj[key].is<float>() || obj[key].is<double>() || obj[key].is<int>()) {
-    *out = obj[key].as<float>();
-    return true;
-  }
-  return false;
-}
-
-float pickNoseHeading(const JsonObject& plane) {
-  float v = 0.0f;
-  if (readJsonFloat(plane, "true_heading", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "mag_heading", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "track", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "dir", &v)) {
-    return v;
-  }
-  return 0.0f;
-}
-
-float pickTrackHeading(const JsonObject& plane) {
-  float v = 0.0f;
-  if (readJsonFloat(plane, "track", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "true_heading", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "mag_heading", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "dir", &v)) {
-    return v;
-  }
-  return 0.0f;
-}
-
-float pickGroundSpeed(const JsonObject& plane) {
-  float v = 0.0f;
-  if (readJsonFloat(plane, "gs", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "tas", &v)) {
-    return v;
-  }
-  if (readJsonFloat(plane, "ias", &v)) {
-    return v;
-  }
-  return 0.0f;
-}
-
-bool isOnGround(const JsonObject& plane) {
-  if (!plane["alt_baro"].is<const char*>()) {
-    return false;
-  }
-  return strcmp(plane["alt_baro"].as<const char*>(), "ground") == 0;
-}
-
-void copyJsonStringTrimmed(const JsonObject& obj, const char* key, char* out,
-                           size_t out_len) {
-  out[0] = '\0';
-  if (out_len == 0 || !obj[key].is<const char*>()) {
-    return;
-  }
-  const char* s = obj[key].as<const char*>();
-  size_t n = strnlen(s, out_len - 1);
-  while (n > 0 && s[n - 1] == ' ') {
-    --n;
-  }
-  memcpy(out, s, n);
-  out[n] = '\0';
-}
-
-void formatAltitudeTag(const JsonObject& plane, char* out, size_t out_len) {
-  out[0] = '\0';
-  if (out_len == 0) {
-    return;
-  }
-
-  if (plane["alt_baro"].is<const char*>()) {
-    const char* s = plane["alt_baro"].as<const char*>();
-    if (strcmp(s, "ground") == 0) {
-      strncpy(out, "GND", out_len - 1);
-      out[out_len - 1] = '\0';
-      return;
-    }
-  }
-
-  float alt = 0.0f;
-  if (readJsonFloat(plane, "alt_baro", &alt) ||
-      readJsonFloat(plane, "alt_geom", &alt)) {
-    snprintf(out, out_len, "%d ft", static_cast<int>(lroundf(alt)));
-  }
-}
-
-void fillTagFields(Aircraft* ac, const JsonObject& plane) {
-  copyJsonStringTrimmed(plane, "flight", ac->callsign, sizeof(ac->callsign));
-  if (ac->callsign[0] == '\0') {
-    copyJsonStringTrimmed(plane, "hex", ac->callsign, sizeof(ac->callsign));
-  }
-
-  copyJsonStringTrimmed(plane, "t", ac->type, sizeof(ac->type));
-  formatAltitudeTag(plane, ac->alt, sizeof(ac->alt));
-}
 
 }  // namespace
 
@@ -215,68 +155,49 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   url += "/dist/";
   url += String(dist_nm, 1);
 
-  WiFiClientSecure client;
-  client.setInsecure();
-
-  HTTPClient http;
-  if (!http.begin(client, url)) {
+  configureHttpOnce();
+  bool reused = s_client.connected();
+  if (reused && s_client.available() == 0 && peerHungUp()) {
+    Serial.println("adsb: server closed the kept-alive connection, reconnecting");
+    s_client.stop();
+    reused = false;
+  }
+  if (!s_http.begin(s_client, url)) {
     Serial.println("adsb: http.begin failed");
     return false;
   }
 
-  http.useHTTP10(true);
-  http.setTimeout(kRequestTimeoutMs);
-  const int code = performGetWithPoll(http);
+  s_http.setTimeout(static_cast<uint16_t>(adsb_parse::headerTimeoutMs(reused)));
+  int code = performGetWithPoll(s_http);
+  if (adsb_parse::shouldRetryOnFreshConnection(code, reused)) {
+    Serial.printf("adsb: kept-alive connection failed (%d), reconnecting\n", code);
+    s_client.stop();
+    s_http.setTimeout(static_cast<uint16_t>(kRequestTimeoutMs));
+    code = performGetWithPoll(s_http);
+  }
   if (code != HTTP_CODE_OK) {
     Serial.printf("adsb: HTTP %d\n", code);
-    http.end();
+    finishFailedResponse(code);
     return false;
   }
 
-  String payload;
-  if (!readResponseBodyWithPoll(http, payload)) {
-    Serial.println("adsb: empty response");
-    http.end();
+  adsb_parse::BodyReader body = makeBodyReader();
+
+  const adsb_parse::ParseResult result = adsb_parse::parseAircraft(
+      body, config::kAdsbShowGroundAircraft, s_aircraft, kMaxAircraft);
+  if (!body.reusable()) {
+    s_client.stop();
+  }
+  s_http.end();
+
+  if (!result.ok) {
+    Serial.printf("adsb: parse error: %s (body status %d)\n", result.error,
+                  static_cast<int>(body.status()));
     return false;
   }
-  http.end();
 
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, payload);
-  if (err) {
-    Serial.printf("adsb: JSON parse error: %s\n", err.c_str());
-    return false;
-  }
-
-  JsonArray ac = doc["ac"].as<JsonArray>();
-  if (ac.isNull()) {
-    s_aircraft_count = 0;
-    return true;
-  }
-
-  size_t n = 0;
-  for (JsonObject plane : ac) {
-    if (n >= kMaxAircraft) {
-      break;
-    }
-    if (!plane["lat"].is<float>() || !plane["lon"].is<float>()) {
-      continue;
-    }
-    if (isOnGround(plane) && !config::kAdsbShowGroundAircraft) {
-      continue;
-    }
-
-    s_aircraft[n].lat = plane["lat"].as<float>();
-    s_aircraft[n].lon = plane["lon"].as<float>();
-    s_aircraft[n].nose_deg = pickNoseHeading(plane);
-    s_aircraft[n].track_deg = pickTrackHeading(plane);
-    s_aircraft[n].gs_knots = pickGroundSpeed(plane);
-    fillTagFields(&s_aircraft[n], plane);
-    ++n;
-  }
-
-  s_aircraft_count = n;
-  Serial.printf("adsb: %u aircraft\n", static_cast<unsigned>(n));
+  s_aircraft_count = result.count;
+  Serial.printf("adsb: %u aircraft\n", static_cast<unsigned>(result.count));
   return true;
 }
 
