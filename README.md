@@ -114,6 +114,7 @@ Range presets: `include/ui/radar_range.h` (`kRangePresets`).
 include/
   config.h
   hardware/
+    boot_button.h
     lgfx_config.hpp
     display.h
     display_font.h

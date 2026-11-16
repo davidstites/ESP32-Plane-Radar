@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "config.h"
+#include "hardware/boot_button.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
 #include "services/radar_location.h"
@@ -49,6 +50,11 @@ void handleBootButton() {
   }
 }
 
+void onBootLongPress() {
+  Serial.println("BOOT held — resetting WiFi");
+  wifiResetCredentialsAndReboot();
+}
+
 void fetchAndDrawAircraft() {
   const float fetch_km = ui::radar::fetchRadiusKm();
   if (!services::adsb::fetchUpdate(services::location::lat(),
@@ -69,6 +75,7 @@ void setup() {
   Serial.println("Plane Radar");
 
   bootButtonInit();
+  bootButtonSetLongPressHandler(onBootLongPress);
   displayInit();
   if (wifiShowsSetupScreenOnBoot()) {
     statusScreenPortal();
