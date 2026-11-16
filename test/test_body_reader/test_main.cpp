@@ -340,6 +340,20 @@ TEST(ParseStreamTest, MalformedJsonStillDrainsAndReuses) {
   EXPECT_EQ(src.pos, src.data.size());
 }
 
+TEST(ParseStreamTest, MissingAcFailsDrainsAndReuses) {
+  FakeSource src(chunked(R"({"msg":"rate limited","now":1})", 8));
+  Aircraft out[kMaxAircraft] = {};
+  strcpy(out[0].callsign, "KEEP");
+  FakeClock clock;
+  BodyReader reader = makeReader(src, clock);
+  const ParseResult r = adsb_parse::parseAircraft(reader, false, out, kMaxAircraft);
+  EXPECT_FALSE(r.ok);
+  EXPECT_STREQ(r.error, "no ac array");
+  EXPECT_STREQ(out[0].callsign, "KEEP");
+  EXPECT_TRUE(reader.reusable());
+  EXPECT_EQ(src.pos, src.data.size());
+}
+
 TEST(ParseStreamTest, TruncatedBodyFailsAndLeavesOutputUntouched) {
   const std::string raw = readFixture("amsterdam_30nm.chunked");
   ASSERT_GT(raw.size(), 1000u);
