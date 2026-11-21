@@ -1,0 +1,7 @@
+{
+  "name": "button_logic",
+  "version": "1.0.0",
+  "description": "Arduino-free tap and long-press timing for a single active-LOW button",
+  "platforms": "*",
+  "frameworks": "*"
+}
