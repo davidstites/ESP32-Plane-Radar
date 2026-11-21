@@ -11,5 +11,8 @@ bool displayFontEnsureLoaded(lgfx::LGFXBase& gfx);
 /** VLW: setTextSize scale (1.0 = font point size). Bitmap: no-op — use displayFontSetBitmap. */
 void displayFontSetSmoothSize(lgfx::LGFXBase& gfx, float size);
 
+/** Smallest VLW text size (displayFontSetSmoothSize scale) whose font height reaches target_px. */
+float displayFontSmoothSizeForHeight(lgfx::LGFXBase& gfx, int target_px);
+
 /** Bitmap GFXfont fallback; clears any runtime VLW font on this instance. */
 void displayFontSetBitmap(lgfx::LGFXBase& gfx, const lgfx::GFXfont* font);
