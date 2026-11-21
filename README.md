@@ -20,7 +20,7 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar redraws a
 | **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash |
 | **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
 
-During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
+The 3 s hold works any time the firmware is running, including during Wi‑Fi connect and the setup portal. Don't hold BOOT while powering on or pressing reset: GPIO 9 is an ESP32‑C3 strapping pin, so a low level at reset enters the ROM download mode instead of starting the firmware.
 
 ## Wi‑Fi setup portal
 
