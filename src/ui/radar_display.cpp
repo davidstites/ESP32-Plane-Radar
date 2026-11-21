@@ -78,20 +78,6 @@ int measureVlwHeight(float size) {
   return tft.fontHeight();
 }
 
-float findVlwSizeForHeight(int target_px) {
-  float lo = 0.25f;
-  float hi = 1.2f;
-  for (int i = 0; i < 16; ++i) {
-    const float mid = (lo + hi) * 0.5f;
-    if (measureVlwHeight(mid) < target_px) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return hi;
-}
-
 void applyScaleStyle();
 
 const lgfx::GFXfont* pickGfxFontClosest(
@@ -118,11 +104,11 @@ void initLabelMetrics() {
 
   if (displayFontIsSmooth()) {
     s_cardinal_use_vlw = true;
-    s_cardinal_vlw_size = findVlwSizeForHeight(cardinal_target);
+    s_cardinal_vlw_size = displayFontSmoothSizeForHeight(tft, cardinal_target);
     const int cardinal_h = measureVlwHeight(s_cardinal_vlw_size);
     const int scale_target = cardinal_h - radar::kScaleBelowCardinalPx;
     s_scale_use_vlw = true;
-    s_scale_vlw_size = findVlwSizeForHeight(scale_target);
+    s_scale_vlw_size = displayFontSmoothSizeForHeight(tft, scale_target);
   } else {
     const lgfx::GFXfont* cardinal_candidates[] = {&fonts::FreeSansBold12pt7b,
                                                   &fonts::FreeSansBold9pt7b};
@@ -164,7 +150,7 @@ void initTagLabelMetrics() {
   const int target = radar::kAircraftTagLabelHeightPx;
   if (displayFontIsSmooth()) {
     s_tag_use_vlw = true;
-    s_tag_vlw_size = findVlwSizeForHeight(target);
+    s_tag_vlw_size = displayFontSmoothSizeForHeight(tft, target);
   } else {
     const lgfx::GFXfont* tag_candidates[] = {&fonts::FreeSansBold12pt7b,
                                                &fonts::FreeSansBold9pt7b};
