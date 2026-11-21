@@ -136,6 +136,7 @@ data/
   ca_extra/                — roots added on top of Mozilla's list (see its README)
 lib/
   adsb_parse/              — Arduino-free HTTP body decoding + aircraft parsing (unit tested)
+  button_logic/            — Arduino-free tap / long-press timing for the BOOT button (unit tested)
   radar_geo/               — Arduino-free lat/lon → km offsets and screen projection (unit tested)
 scripts/
   build_large_airports.py
