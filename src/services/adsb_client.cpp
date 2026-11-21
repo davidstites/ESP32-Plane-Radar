@@ -4,6 +4,9 @@
 #include <WiFiClientSecure.h>
 #include <lwip/sockets.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #include <cerrno>
 
 #include "adsb_parse/body_reader.h"
@@ -23,9 +26,34 @@ constexpr float kKmPerNm = 1.852f;
 constexpr int kConnectAttemptMs = 200;
 using adsb_parse::kRequestTimeoutMs;
 
+// Written by the fetch task, read by the render loop; s_mutex guards all three.
 Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
-PollFn s_poll_fn = nullptr;
+unsigned long s_last_update_ms = 0;
+SemaphoreHandle_t s_mutex = nullptr;
+
+void lock() {
+  if (s_mutex != nullptr) {
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+  }
+}
+
+void unlock() {
+  if (s_mutex != nullptr) {
+    xSemaphoreGive(s_mutex);
+  }
+}
+
+/** Replace the shared list in one step so a reader never sees a half-updated one. */
+void publish(const Aircraft* src, size_t count) {
+  lock();
+  for (size_t i = 0; i < count; ++i) {
+    s_aircraft[i] = src[i];
+  }
+  s_aircraft_count = count;
+  s_last_update_ms = millis();
+  unlock();
+}
 
 // One TLS client and HTTP client for the life of the program: with keep-alive the
 // TLS session (and its ~40 KB of mbedTLS buffers) survives between fetches.
@@ -44,21 +72,14 @@ void configureHttpOnce() {
   s_http_configured = true;
 }
 
-void pollNetwork() {
-  if (s_poll_fn != nullptr) {
-    s_poll_fn();
-  }
-}
-
 static_assert(adsb_parse::kHttpErrorConnectionRefused == HTTPC_ERROR_CONNECTION_REFUSED &&
                   adsb_parse::kHttpErrorNotConnected == HTTPC_ERROR_NOT_CONNECTED,
               "retry_policy.h HTTPClient codes out of date");
 
-int performGetWithPoll(HTTPClient& http) {
+int performGet(HTTPClient& http) {
   http.setConnectTimeout(kConnectAttemptMs);
   const unsigned long deadline = millis() + kRequestTimeoutMs;
   while (millis() < deadline) {
-    pollNetwork();
     const int code = http.GET();
     if (code > 0) {
       return code;
@@ -109,10 +130,7 @@ adsb_parse::BodyReader makeBodyReader() {
       [](uint8_t* buf, size_t len) { return readAvailable(buf, len); },
       responseFraming(s_http), s_http.getSize(),
       [] { return static_cast<uint32_t>(millis()); },
-      [] {
-        pollNetwork();
-        delay(1);
-      },
+      [] { delay(1); },
       kRequestTimeoutMs);
 }
 
@@ -139,11 +157,24 @@ float kmToNauticalMiles(float km) { return km / kKmPerNm; }
 
 }  // namespace
 
-void setPollFn(PollFn fn) { s_poll_fn = fn; }
+void init() {
+  if (s_mutex == nullptr) {
+    s_mutex = xSemaphoreCreateMutex();
+  }
+}
 
-size_t aircraftCount() { return s_aircraft_count; }
-
-const Aircraft* aircraftList() { return s_aircraft; }
+size_t snapshotAircraft(Aircraft* out, size_t max_out, unsigned long* out_last_update_ms) {
+  lock();
+  const size_t count = s_aircraft_count < max_out ? s_aircraft_count : max_out;
+  for (size_t i = 0; i < count; ++i) {
+    out[i] = s_aircraft[i];
+  }
+  if (out_last_update_ms != nullptr) {
+    *out_last_update_ms = s_last_update_ms;
+  }
+  unlock();
+  return count;
+}
 
 bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   const float dist_nm = kmToNauticalMiles(fetch_radius_km);
@@ -168,12 +199,12 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   }
 
   s_http.setTimeout(static_cast<uint16_t>(adsb_parse::headerTimeoutMs(reused)));
-  int code = performGetWithPoll(s_http);
+  int code = performGet(s_http);
   if (adsb_parse::shouldRetryOnFreshConnection(code, reused)) {
     Serial.printf("adsb: kept-alive connection failed (%d), reconnecting\n", code);
     s_client.stop();
     s_http.setTimeout(static_cast<uint16_t>(kRequestTimeoutMs));
-    code = performGetWithPoll(s_http);
+    code = performGet(s_http);
   }
   if (code != HTTP_CODE_OK) {
     Serial.printf("adsb: HTTP %d\n", code);
@@ -183,8 +214,10 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
 
   adsb_parse::BodyReader body = makeBodyReader();
 
+  // Parse off to the side (only the fetch task runs this), then publish atomically.
+  static Aircraft parsed[kMaxAircraft];
   const adsb_parse::ParseResult result = adsb_parse::parseAircraft(
-      body, config::kAdsbShowGroundAircraft, s_aircraft, kMaxAircraft);
+      body, config::kAdsbShowGroundAircraft, parsed, kMaxAircraft);
   if (!body.reusable()) {
     s_client.stop();
   }
@@ -196,7 +229,7 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
     return false;
   }
 
-  s_aircraft_count = result.count;
+  publish(parsed, result.count);
   Serial.printf("adsb: %u aircraft\n", static_cast<unsigned>(result.count));
   return true;
 }

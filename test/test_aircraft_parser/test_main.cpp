@@ -79,6 +79,23 @@ TEST(AircraftParserTest, MissingLatOrLonSkipped) {
   EXPECT_EQ(r.count, 0u);
 }
 
+TEST(AircraftParserTest, PositionAgeFromSeenPos) {
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":1.5})").pos_age_ms, 1500u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":2})").pos_age_ms, 2000u);
+}
+
+TEST(AircraftParserTest, PositionAgeDefaultsToZeroWhenMissingOrNegative) {
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2})").pos_age_ms, 0u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":-3})").pos_age_ms, 0u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":"soon"})").pos_age_ms, 0u);
+}
+
+TEST(AircraftParserTest, PositionAgeCapped) {
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":29.9})").pos_age_ms, 29900u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":30})").pos_age_ms, adsb_parse::kMaxPosAgeMs);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"seen_pos":900})").pos_age_ms, adsb_parse::kMaxPosAgeMs);
+}
+
 TEST(AircraftParserTest, NoseHeadingFallbackOrder) {
   EXPECT_FLOAT_EQ(
       parseOne(R"({"lat":1,"lon":2,"true_heading":10,"mag_heading":20,"track":30,"dir":40})")

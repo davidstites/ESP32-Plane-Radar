@@ -13,7 +13,7 @@ namespace {
 
 constexpr const char* kFilterKeys[] = {
     "lat", "lon", "true_heading", "mag_heading", "track", "dir", "gs",
-    "tas", "ias", "flight",       "hex",         "t",     "alt_baro", "alt_geom",
+    "tas", "ias", "flight",       "hex",         "t",     "alt_baro", "alt_geom", "seen_pos",
 };
 
 bool readJsonFloat(const JsonObject& obj, const char* key, float* out) {
@@ -70,6 +70,15 @@ float pickGroundSpeed(const JsonObject& plane) {
     return v;
   }
   return 0.0f;
+}
+
+uint32_t pickPosAgeMs(const JsonObject& plane) {
+  float seconds = 0.0f;
+  if (!readJsonFloat(plane, "seen_pos", &seconds) || seconds <= 0.0f) {
+    return 0;
+  }
+  const float ms = seconds * 1000.0f;
+  return ms >= static_cast<float>(kMaxPosAgeMs) ? kMaxPosAgeMs : static_cast<uint32_t>(ms);
 }
 
 bool isOnGround(const JsonObject& plane) {
@@ -137,6 +146,7 @@ size_t extractAircraft(JsonDocument& doc, bool include_ground, Aircraft* out,
     out[n].nose_deg = pickNoseHeading(plane);
     out[n].track_deg = pickTrackHeading(plane);
     out[n].gs_knots = pickGroundSpeed(plane);
+    out[n].pos_age_ms = pickPosAgeMs(plane);
     fillTagFields(&out[n], plane);
     ++n;
   }
