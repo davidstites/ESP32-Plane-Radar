@@ -5,6 +5,8 @@
 #include "radar_geo/radar_geo.h"
 
 using radar_geo::clipToDisc;
+using radar_geo::deadReckon;
+using radar_geo::LatLon;
 using radar_geo::distSq;
 using radar_geo::kDegToRad;
 using radar_geo::kKmPerDeg;
@@ -120,4 +122,37 @@ TEST(RadarGeoTest, ClipFallsBackToStartWhenNoStepFits) {
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+}
+
+TEST(RadarGeoTest, DeadReckonStandingStillOrZeroElapsedStays) {
+  const LatLon still = deadReckon(52.0f, 4.0f, 90.0f, 0.0f, 60000);
+  EXPECT_FLOAT_EQ(still.lat, 52.0f);
+  EXPECT_FLOAT_EQ(still.lon, 4.0f);
+  const LatLon fresh = deadReckon(52.0f, 4.0f, 90.0f, 300.0f, 0);
+  EXPECT_FLOAT_EQ(fresh.lat, 52.0f);
+  EXPECT_FLOAT_EQ(fresh.lon, 4.0f);
+}
+
+TEST(RadarGeoTest, DeadReckonNorthMovesLatitudeOnly) {
+  // One hour at 60 kt is 111.12 km, just over a degree of latitude.
+  const LatLon p = deadReckon(10.0f, 20.0f, 0.0f, 60.0f, 3600000);
+  EXPECT_NEAR(p.lat, 10.0f + 60.0f * 1.852f / kKmPerDeg, 1e-4f);
+  EXPECT_NEAR(p.lon, 20.0f, 1e-4f);
+}
+
+TEST(RadarGeoTest, DeadReckonEastWidensLongitudeByInverseCosLat) {
+  const float lat = 60.0f;  // cos = 0.5, so a km of eastward flight is 2x the degrees
+  const LatLon p = deadReckon(lat, 5.0f, 90.0f, 60.0f, 3600000);
+  const float km = 60.0f * 1.852f;
+  EXPECT_NEAR(p.lon, 5.0f + km / (kKmPerDeg * 0.5f), 1e-3f);
+  EXPECT_NEAR(p.lat, lat, 1e-3f);
+}
+
+TEST(RadarGeoTest, DeadReckonDistanceRoundTripsThroughOffsetKm) {
+  const float lat = static_cast<float>(kAmsLat);
+  const float lon = static_cast<float>(kAmsLon);
+  const LatLon p = deadReckon(lat, lon, 45.0f, 120.0f, 30000);  // 120 kt for 30 s
+  const OffsetKm o = offsetKm(kAmsLat, kAmsLon, p.lat, p.lon);
+  EXPECT_NEAR(o.dist, 120.0f * 1.852f * (30.0f / 3600.0f), 0.01f);
+  EXPECT_NEAR(o.dx, o.dy, 0.01f);  // 45 degrees: equal east and north
 }

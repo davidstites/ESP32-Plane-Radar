@@ -15,6 +15,15 @@ OffsetKm offsetKm(double center_lat, double center_lon, float lat, float lon) {
   return o;
 }
 
+LatLon deadReckon(float lat, float lon, float track_deg, float gs_knots, uint32_t elapsed_ms) {
+  constexpr float kKmPerNm = 1.852f;
+  constexpr float kMsPerHour = 3600000.0f;
+  const float dist_km = gs_knots * kKmPerNm * (static_cast<float>(elapsed_ms) / kMsPerHour);
+  const float rad = track_deg * kDegToRad;
+  return {lat + dist_km * std::cos(rad) / kKmPerDeg,
+          lon + dist_km * std::sin(rad) / (kKmPerDeg * std::cos(lat * kDegToRad))};
+}
+
 ScreenPoint toScreen(const OffsetKm& offset, float outer_km, int outer_radius_px, int center_x,
                      int center_y) {
   const float px_per_km = static_cast<float>(outer_radius_px) / outer_km;

@@ -1,5 +1,6 @@
 #include "ui/radar_display.h"
 
+#include <Arduino.h>
 #include <lgfx/v1/lgfx_fonts.hpp>
 
 #include <algorithm>
@@ -424,8 +425,11 @@ void sortBeyondDotsFarFirst(BeyondDotDrawItem* items, size_t count) {
 void drawAircraft() {
   initLabelMetrics();
 
-  const size_t n = services::adsb::aircraftCount();
-  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  // Snapshot under the adsb lock (the fetch may run on another thread).
+  static services::adsb::Aircraft planes[services::adsb::kMaxAircraft];
+  unsigned long base_ms = 0;
+  const size_t n = services::adsb::snapshotAircraft(
+      planes, services::adsb::kMaxAircraft, &base_ms);
 
   AircraftDrawItem items[services::adsb::kMaxAircraft];
   BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
@@ -433,15 +437,23 @@ void drawAircraft() {
   size_t dot_count = 0;
 
   for (size_t i = 0; i < n; ++i) {
+    // Dead-reckoned position for smooth motion between fetches.
+    const unsigned long elapsed_ms =
+        base_ms == 0 ? 0 : (millis() - base_ms) + planes[i].pos_age_ms;
+    const radar_geo::LatLon pos = radar_geo::deadReckon(
+        planes[i].lat, planes[i].lon, planes[i].track_deg, planes[i].gs_knots, elapsed_ms);
+    const float lat = pos.lat;
+    const float lon = pos.lon;
+
     float dx_km = 0.0f;
     float dy_km = 0.0f;
     float dist_km = 0.0f;
-    radar::offsetKmFromCenter(planes[i].lat, planes[i].lon, &dx_km, &dy_km, &dist_km);
+    radar::offsetKmFromCenter(lat, lon, &dx_km, &dy_km, &dist_km);
 
     if (isInsideOuterRingKm(dist_km)) {
       int x = 0;
       int y = 0;
-      radar::latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
+      radar::latLonToScreen(lat, lon, &x, &y);
       items[draw_count].index = i;
       items[draw_count].x = x;
       items[draw_count].y = y;
@@ -452,8 +464,7 @@ void drawAircraft() {
 
     int dot_x = 0;
     int dot_y = 0;
-    if (!beyondRingEdgeDotFromLatLon(planes[i].lat, planes[i].lon, &dot_x,
-                                     &dot_y)) {
+    if (!beyondRingEdgeDotFromLatLon(lat, lon, &dot_x, &dot_y)) {
       continue;
     }
     dots[dot_count].x = dot_x;
@@ -599,7 +610,7 @@ bool ensureFrameSprite() {
   if (s_frame_ready) {
     return true;
   }
-  s_frame.setColorDepth(16);
+  s_frame.setColorDepth(lgfx::color_depth_t::rgb332_1Byte);
   if (!s_frame.createSprite(radar::kSize, radar::kSize)) {
     Serial.println("radar: frame sprite alloc failed");
     return false;

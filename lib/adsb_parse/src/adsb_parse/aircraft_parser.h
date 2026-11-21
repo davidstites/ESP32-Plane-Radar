@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 
 #include <cstddef>
+#include <cstdint>
 
 namespace adsb_parse {
 
@@ -14,12 +15,16 @@ struct Aircraft {
   float nose_deg;
   float track_deg;
   float gs_knots;
+  /** Age of the position fix when fetched (ms), from the feed's seen_pos; capped at kMaxPosAgeMs. */
+  uint32_t pos_age_ms;
   char callsign[9];
   char type[5];
   char alt[12];
 };
 
 constexpr size_t kMaxAircraft = 64;
+/** A staler fix is not extrapolated further, so it isn't flung across the screen. */
+constexpr uint32_t kMaxPosAgeMs = 30000;
 
 /** Outcome of a parse. error is nullptr on success, else a static string. */
 struct ParseResult {
