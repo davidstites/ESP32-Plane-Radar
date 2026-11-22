@@ -117,6 +117,18 @@ void formatAltitudeTag(const JsonObject& plane, char* out, size_t out_len) {
   }
 }
 
+void formatSpeedTag(const JsonObject& plane, char* out, size_t out_len) {
+  out[0] = '\0';
+  float gs = 0.0f;
+  if (isOnGround(plane) || !readJsonFloat(plane, "gs", &gs)) {
+    return;
+  }
+  const long knots = std::lround(gs);
+  if (knots > 0) {
+    snprintf(out, out_len, "%ld kts", knots);
+  }
+}
+
 void fillTagFields(Aircraft* ac, const JsonObject& plane) {
   copyJsonStringTrimmed(plane, "flight", ac->callsign, sizeof(ac->callsign));
   if (ac->callsign[0] == '\0') {
@@ -125,6 +137,7 @@ void fillTagFields(Aircraft* ac, const JsonObject& plane) {
 
   copyJsonStringTrimmed(plane, "t", ac->type, sizeof(ac->type));
   formatAltitudeTag(plane, ac->alt, sizeof(ac->alt));
+  formatSpeedTag(plane, ac->speed, sizeof(ac->speed));
 }
 
 size_t extractAircraft(JsonDocument& doc, bool include_ground, Aircraft* out,
