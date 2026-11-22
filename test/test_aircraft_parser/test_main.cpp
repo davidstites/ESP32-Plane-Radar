@@ -152,6 +152,16 @@ TEST(AircraftParserTest, AltitudeTag) {
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2})").alt, "");
 }
 
+TEST(AircraftParserTest, SpeedTag) {
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":450.4})").speed, "450 kts");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":449.6})").speed, "450 kts");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":0.4})").speed, "");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":0})").speed, "");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2})").speed, "");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"tas":200,"ias":300})").speed, "");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":"ground","gs":12})").speed, "");
+}
+
 TEST(AircraftParserTest, EmptyAcArrayReturnsZero) {
   Aircraft out[1] = {};
   const ParseResult r = parse(R"({"ac":[],"now":1})", out);

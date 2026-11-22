@@ -20,6 +20,8 @@ struct Aircraft {
   char callsign[9];
   char type[5];
   char alt[12];
+  /** Reported ground speed ("450 kts"); empty when on the ground or gs is absent or zero. */
+  char speed[10];
 };
 
 constexpr size_t kMaxAircraft = 64;
