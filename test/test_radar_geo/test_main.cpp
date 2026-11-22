@@ -156,3 +156,11 @@ TEST(RadarGeoTest, DeadReckonDistanceRoundTripsThroughOffsetKm) {
   EXPECT_NEAR(o.dist, 120.0f * 1.852f * (30.0f / 3600.0f), 0.01f);
   EXPECT_NEAR(o.dx, o.dy, 0.01f);  // 45 degrees: equal east and north
 }
+
+TEST(RadarGeoTest, SameViewComparesCenterAndRange) {
+  const radar_geo::ViewKey base = {37.0, -121.0, 1};
+  EXPECT_TRUE(radar_geo::sameView(base, {37.0, -121.0, 1}));
+  EXPECT_FALSE(radar_geo::sameView(base, {37.1, -121.0, 1}));
+  EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.1, 1}));
+  EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.0, 2}));
+}

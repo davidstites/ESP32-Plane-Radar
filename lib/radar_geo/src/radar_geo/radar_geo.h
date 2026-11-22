@@ -25,6 +25,15 @@ struct ScreenPoint {
   int y;
 };
 
+/** What the projection depends on: a layer drawn from it stays valid while the key is equal. */
+struct ViewKey {
+  double center_lat;
+  double center_lon;
+  uint8_t range_index;
+};
+
+bool sameView(const ViewKey& a, const ViewKey& b);
+
 /** Offset of (lat, lon) from (center_lat, center_lon); east-west scaled by cos(center_lat). */
 OffsetKm offsetKm(double center_lat, double center_lon, float lat, float lon);
 
