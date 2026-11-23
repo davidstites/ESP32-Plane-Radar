@@ -97,4 +97,49 @@ ScreenPoint clipToDisc(ScreenPoint from, ScreenPoint to, int center_x, int cente
   return from;
 }
 
+bool rectsOverlap(const Rect& a, const Rect& b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+bool segmentIntersectsRect(int x0, int y0, int x1, int y1, const Rect& rect) {
+  // Liang-Barsky: clip the parametric segment to each side of the rectangle in turn.
+  float t_enter = 0.0f;
+  float t_exit = 1.0f;
+  const auto clip = [&](float p, float q) {
+    if (p == 0.0f) {
+      return q >= 0.0f;  // parallel to this side: inside only if on the inner side of it
+    }
+    const float t = q / p;
+    if (p < 0.0f) {
+      if (t > t_exit) return false;
+      if (t > t_enter) t_enter = t;
+    } else {
+      if (t < t_enter) return false;
+      if (t < t_exit) t_exit = t;
+    }
+    return true;
+  };
+
+  const float dx = static_cast<float>(x1 - x0);
+  const float dy = static_cast<float>(y1 - y0);
+  return clip(-dx, static_cast<float>(x0 - rect.x)) &&
+         clip(dx, static_cast<float>(rect.x + rect.w - x0)) &&
+         clip(-dy, static_cast<float>(y0 - rect.y)) &&
+         clip(dy, static_cast<float>(rect.y + rect.h - y0));
+}
+
+int firstClearCandidate(const Rect* candidates, size_t candidate_count, const Rect* placed,
+                        size_t placed_count) {
+  for (size_t c = 0; c < candidate_count; ++c) {
+    bool clear = true;
+    for (size_t p = 0; p < placed_count && clear; ++p) {
+      clear = !rectsOverlap(candidates[c], placed[p]);
+    }
+    if (clear) {
+      return static_cast<int>(c);
+    }
+  }
+  return -1;
+}
+
 }  // namespace radar_geo

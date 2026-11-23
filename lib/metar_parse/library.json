@@ -1,0 +1,10 @@
+{
+  "name": "metar_parse",
+  "version": "1.0.0",
+  "description": "Arduino-free aviationweather.gov METAR flight-category decoding and request building",
+  "platforms": "*",
+  "frameworks": "*",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^7.4.2"
+  }
+}

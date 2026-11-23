@@ -4,22 +4,61 @@
 #include <WiFi.h>
 
 #include <net_schedule/scheduler.h>
+#include <radar_geo/radar_geo.h>
 
 #include "config.h"
 #include "services/adsb_client.h"
+#include "services/metar_client.h"
 #include "services/radar_location.h"
 #include "ui/radar_range.h"
+#include "ui/runway_overlay.h"
 
 namespace services::net {
 
 namespace {
 
-// Pinned to core 0, away from the render loop on core 1. The HTTPS request blocks for
-// ~1-2 s; keeping it off the main loop lets the radar keep redrawing (dead-reckoned) at
+radar_geo::ViewKey currentView() {
+  return {location::lat(), location::lon(), ui::radar::rangeCurrent().ring3_km};
+}
+
+/** METAR flight categories for the airports labeled on screen, retried on failure. */
+bool refreshMetars() {
+  const char* icaos[metar_parse::kMaxStations];
+  const size_t count = ui::runway::snapshotLabelIcaos(icaos, metar_parse::kMaxStations);
+  if (count == 0) {
+    return true;  // no airport in view: nothing to ask
+  }
+  for (int attempt = 0; attempt < net_schedule::kFeedAttempts; ++attempt) {
+    if (attempt > 0) {
+      vTaskDelay(pdMS_TO_TICKS(net_schedule::retryBackoffMs(attempt)));
+    }
+    if (metar::fetch(icaos, count)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Weather feeds, one TLS session at a time. The ADS-B session is closed first: its ~40 KB
+ * of buffers plus another session's would not fit in the heap.
+ */
+bool refreshFeeds() {
+  adsb::closeConnection();
+  const bool ok = refreshMetars();
+  Serial.printf("feeds: %s, heap free %u (lowest ever %u)\n", ok ? "ok" : "failed",
+                static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(ESP.getMinFreeHeap()));
+  return ok;
+}
+
+// Pinned to core 0, away from the render loop on core 1. The HTTPS requests block for
+// ~1-2 s; keeping them off the main loop lets the radar keep redrawing (dead-reckoned) at
 // 4 Hz throughout.
 void workerTask(void*) {
   net_schedule::Scheduler scheduler({config::kAdsbFetchIntervalMs, config::kFeedRefreshIntervalMs,
                                      config::kFeedRetryMs, config::kViewSettleMs});
+  radar_geo::ViewKey last_view = currentView();
   for (;;) {
     if (WiFi.status() != WL_CONNECTED) {
       vTaskDelay(pdMS_TO_TICKS(net_schedule::kMaxSleepMs));
@@ -27,11 +66,25 @@ void workerTask(void*) {
     }
 
     const unsigned long now = millis();
-    if (scheduler.next(now) == net_schedule::Action::kPollAdsb) {
-      adsb::fetchUpdate(location::lat(), location::lon(), ui::radar::fetchRadiusKm());
-      scheduler.adsbFinished(millis());
-    } else {
-      vTaskDelay(pdMS_TO_TICKS(scheduler.sleepMs(now)));
+    const radar_geo::ViewKey view = currentView();
+    if (!radar_geo::sameView(view, last_view)) {
+      scheduler.onViewChanged(now);
+      last_view = view;
+    }
+    scheduler.setFeedsReady(ui::runway::labelsReady());
+
+    switch (scheduler.next(now)) {
+      case net_schedule::Action::kPollAdsb:
+        adsb::fetchUpdate(location::lat(), location::lon(), ui::radar::fetchRadiusKm());
+        scheduler.adsbFinished(millis());
+        break;
+      case net_schedule::Action::kRefreshFeeds:
+        scheduler.feedsStarted();
+        scheduler.feedsFinished(millis(), refreshFeeds());
+        break;
+      case net_schedule::Action::kWait:
+        vTaskDelay(pdMS_TO_TICKS(scheduler.sleepMs(now)));
+        break;
     }
   }
 }

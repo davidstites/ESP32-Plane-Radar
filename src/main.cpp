@@ -9,6 +9,7 @@
 #include "hardware/boot_button.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
+#include "services/metar_client.h"
 #include "services/net_worker.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
@@ -73,6 +74,7 @@ void setup() {
   services::location::init();
   ui::radar::rangeInit();
   services::adsb::init();
+  services::metar::init();
 
   if (wifiSetupConnect()) {
     showRadarIfConnected();

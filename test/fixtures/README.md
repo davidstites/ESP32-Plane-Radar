@@ -35,3 +35,11 @@ Recorded adsb.fi responses used by the `native` unit tests.
       m['ac'].append(pos[i % len(pos)]); i += 1
   json.dump(m, open(p, 'w'), separators=(',', ':'))"
   ```
+
+- `metar_5_stations_3h.json` — aviationweather.gov METAR JSON for five stations over three hours
+  (20 reports, newest first per station), used by `test_metar_parse`:
+
+  ```bash
+  curl -s "https://aviationweather.gov/api/data/metar?ids=KSFO,KORD,KJFK,KE16,KDFW&format=json&hours=3" \
+    -o test/fixtures/metar_5_stations_3h.json
+  ```
