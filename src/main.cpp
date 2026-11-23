@@ -13,6 +13,7 @@
 #include "services/net_worker.h"
 #include "services/precip_client.h"
 #include "services/radar_location.h"
+#include "services/setup_session.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
@@ -73,6 +74,7 @@ void setup() {
     statusScreenPortal();
   }
   services::location::init();
+  services::setup::init();
   ui::radar::rangeInit();
   services::adsb::init();
   services::metar::init();

@@ -13,6 +13,10 @@ constexpr char kPortalIp[] = "192.168.4.1";
 constexpr char kPortalHostname[] = "plane-radar";
 constexpr char kPortalHostUrl[] = "plane-radar.local";
 
+// --- Hosted location setup page (QR code and /location hand-off) ---
+constexpr char kSetupPageUrl[] = "https://metarly.app/setup";
+constexpr char kSetupPageShortUrl[] = "metarly.app/setup";
+
 /** Per-attempt STA connect wait (ms); retried kWifiConnectAttempts times. */
 constexpr unsigned long kWifiConnectAttemptMs = 15000;
 constexpr uint8_t kWifiConnectAttempts = 3;

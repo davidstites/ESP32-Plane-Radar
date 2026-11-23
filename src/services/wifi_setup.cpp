@@ -17,6 +17,7 @@
 #include "config.h"
 #include "hardware/boot_button.h"
 #include "services/radar_location.h"
+#include "services/setup_session.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
 
@@ -43,6 +44,14 @@ constexpr char kCoordInputAttrs[] =
 // first Wi-Fi save would store the default location as if the user had chosen it.
 char s_lat_prefill[kCoordParamLen + 1] = "";
 char s_lon_prefill[kCoordParamLen + 1] = "";
+
+// Shown at the top of the parameters page while on the LAN; empty otherwise.
+char s_location_link_html[256] = "";
+WiFiManagerParameter s_param_location_link(s_location_link_html);
+
+WiFiManagerParameter s_param_adv_open(
+    "<details class=\"adv\"><summary>Advanced: coordinates</summary>");
+WiFiManagerParameter s_param_adv_close("</details>");
 
 WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
@@ -71,7 +80,25 @@ char s_precip_checkbox_attrs[32] = "type=\"checkbox\"";
 WiFiManagerParameter s_param_precip("show_precip", "Show NEXRAD precipitation (US only)", "T", 2,
                                     s_precip_checkbox_attrs, WFM_LABEL_AFTER);
 
+/** Builds the "set location" link (HTML-escaped) or clears it when there is no LAN address. */
+void refreshLocationLink() {
+  char url[160];
+  if (!services::setup::url(url, sizeof(url))) {
+    s_location_link_html[0] = '\0';
+    return;
+  }
+  size_t n = snprintf(s_location_link_html, sizeof(s_location_link_html),
+                      "<p><a href=\"");
+  for (const char* c = url; *c != '\0' && n + 8 < sizeof(s_location_link_html); ++c) {
+    n += snprintf(s_location_link_html + n, sizeof(s_location_link_html) - n,
+                  *c == '&' ? "&amp;" : "%c", *c);
+  }
+  snprintf(s_location_link_html + n, sizeof(s_location_link_html) - n,
+           "\">Set location with address search</a></p>");
+}
+
 void refreshPortalParamValues() {
+  refreshLocationLink();
   char lat_buf[kCoordParamLen + 1];
   char lon_buf[kCoordParamLen + 1];
   snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
@@ -114,8 +141,11 @@ void onPortalParamsSaved() {
 
 void attachPortalParams(WiFiManager& wm) {
   refreshPortalParamValues();
+  wm.addParameter(&s_param_location_link);
+  wm.addParameter(&s_param_adv_open);
   wm.addParameter(&s_param_lat);
   wm.addParameter(&s_param_lon);
+  wm.addParameter(&s_param_adv_close);
   wm.addParameter(&s_param_miles);
   wm.addParameter(&s_param_range);
   wm.addParameter(&s_param_runways);
@@ -221,10 +251,32 @@ bool wifiLinkUp() {
          WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
+/** GET /location?lat=&lon=&token= from the hosted setup page (runs inside s_wm.process()). */
+void handleLocationRoute() {
+  const String lat = s_wm.server->arg("lat");
+  const String lon = s_wm.server->arg("lon");
+  const String token = s_wm.server->arg("token");
+  const char* message = "";
+  const int status =
+      services::setup::handleLocation(token.c_str(), lat.c_str(), lon.c_str(), &message);
+  String page =
+      "<!doctype html><meta charset=\"utf-8\">"
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      "<title>Plane Radar</title><body style=\"font-family:system-ui,sans-serif;"
+      "padding:2rem\"><h2>";
+  page += message;
+  page += "</h2></body>";
+  s_wm.server->sendHeader("Cache-Control", "no-store");
+  s_wm.server->send(status, "text/html", page);
+}
+
+void registerPortalRoutes() { s_wm.server->on("/location", HTTP_GET, handleLocationRoute); }
+
 void ensureWifiManager() {
   if (s_wm_configured) {
     return;
   }
+  s_wm.setWebServerCallback(registerPortalRoutes);
   s_wm.setConfigPortalTimeout(config::kWifiPortalTimeoutSec);
   s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
                            IPAddress(255, 255, 255, 0));

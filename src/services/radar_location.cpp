@@ -51,15 +51,19 @@ double lon() { return s_lon; }
 
 bool hasSaved() { return s_saved; }
 
-bool saveFromStrings(const char* lat_str, const char* lon_str) {
-  double lat = 0.0;
-  double lon = 0.0;
-  if (!setup_link::parseLatLon(lat_str, lon_str, &lat, &lon)) {
+bool save(double lat, double lon) {
+  if (!setup_link::validLatLon(lat, lon)) {
     return false;
   }
   persist(lat, lon);
   Serial.printf("Radar location saved: %.6f, %.6f\n", lat, lon);
   return true;
+}
+
+bool saveFromStrings(const char* lat_str, const char* lon_str) {
+  double lat = 0.0;
+  double lon = 0.0;
+  return setup_link::parseLatLon(lat_str, lon_str, &lat, &lon) && save(lat, lon);
 }
 
 void clear() {
