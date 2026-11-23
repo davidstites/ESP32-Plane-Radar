@@ -157,6 +157,11 @@ float kmToNauticalMiles(float km) { return km / kKmPerNm; }
 
 }  // namespace
 
+void closeConnection() {
+  s_http.end();
+  s_client.stop();
+}
+
 void init() {
   if (s_mutex == nullptr) {
     s_mutex = xSemaphoreCreateMutex();

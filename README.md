@@ -72,6 +72,8 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
 
 - Major airports from OurAirports (`large_airport`); all open runway strips in range (helipads excluded)
 - Teal runway lines with one ICAO label per airport (e.g. `KJFK`); toggle in the Wi‑Fi setup portal
+- A dot beside each label shows the airport's METAR flight category from aviationweather.gov: green VFR, blue MVFR, red IFR, magenta LIFR; no dot when there is no report from the last two hours. Refreshed every 15 minutes (`kFeedRefreshIntervalMs`) and shortly after the range or location changes
+- Labels that would overlap are moved just below or above, or dropped (nearest the center wins); the runway lines stay
 - Update the embedded list: `python3 scripts/build_large_airports.py`
 
 ### Aircraft
@@ -88,6 +90,7 @@ As range decreases (or aircraft approach), targets move inward; beyond-ring dots
 - Fetch radius: `ui::radar::fetchRadiusKm()` — scales with the active preset to roughly the screen edge (so rim dots have data)
 - Poll interval: `kAdsbFetchIntervalMs` (5 s) in `config.h`
 - Ground aircraft hidden by default (`kAdsbShowGroundAircraft`)
+- One network task runs the ADS-B polls and the weather refresh one at a time (`net_schedule`); the weather refresh closes the kept-alive ADS-B connection first, because two TLS sessions do not fit in the C3's heap
 - One HTTPS connection is kept alive between polls (HTTP/1.1), so the TLS handshake happens once rather than on every fetch; a dropped connection is re-established automatically
 - The response is parsed as it streams in, keeping only the fields the radar uses (`lib/adsb_parse/`)
 - The server certificate is verified against the embedded CA bundle `data/x509_crt_bundle.bin` (Mozilla's root list plus `data/ca_extra/`). Certificate dates are not checked: Arduino core 2.0.14 builds mbedTLS without time support

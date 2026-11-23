@@ -4,12 +4,17 @@
 
 #include <radar_geo/radar_geo.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 
 #include "data/large_airports.h"
 #include "hardware/display_font.h"
+#include "hardware/panel_color.h"
+#include "services/metar_client.h"
 #include "services/radar_location.h"
 #include "ui/radar_projection.h"
 #include "ui/radar_range.h"
@@ -31,6 +36,7 @@ struct CachedRunway {
 
 struct CachedLabel {
   const char* ident;
+  const char* icao;
   int16_t x, y;
 };
 
@@ -39,6 +45,15 @@ constexpr size_t kMaxCachedRunways = 128;
 
 CachedRunway s_cached_runways[kMaxCachedRunways];
 size_t s_cached_runway_count = 0;
+// The network task reads the cached labels to know which airports to ask about; the render
+// loop rebuilds them. This lock covers rebuilds and snapshots (the render loop alone reads
+// them to draw, so drawing needs no lock).
+StaticSemaphore_t s_cache_lock_storage;
+SemaphoreHandle_t s_cache_lock = xSemaphoreCreateMutexStatic(&s_cache_lock_storage);
+
+constexpr int kLabelPadX = 2;
+constexpr int kLabelPadY = 1;
+
 CachedLabel s_cached_labels[kMaxAirportLabels];
 size_t s_cached_label_count = 0;
 radar_geo::ViewKey s_cached_view = {};
@@ -106,16 +121,39 @@ bool segmentIntersectsDisc(int x0, int y0, int x1, int y1) {
   return (t0 >= 0.0f && t0 <= 1.0f) || (t1 >= 0.0f && t1 <= 1.0f);
 }
 
-void drawBoldRunwayLabel(lgfx::LGFXBase& gfx, const char* ident, int mx, int my) {
+uint16_t flightCategoryColor(metar_parse::Category category) {
+  switch (category) {
+    case metar_parse::Category::kVfr:
+      return panelColor565(radar::kFcVfrR, radar::kFcVfrG, radar::kFcVfrB);
+    case metar_parse::Category::kMvfr:
+      return panelColor565(radar::kFcMvfrR, radar::kFcMvfrG, radar::kFcMvfrB);
+    case metar_parse::Category::kIfr:
+      return panelColor565(radar::kFcIfrR, radar::kFcIfrG, radar::kFcIfrB);
+    case metar_parse::Category::kLifr:
+      return panelColor565(radar::kFcLifrR, radar::kFcLifrG, radar::kFcLifrB);
+    case metar_parse::Category::kUnknown:
+      break;
+  }
+  return 0;
+}
+
+void drawBoldRunwayLabel(lgfx::LGFXBase& gfx, const char* ident, const char* icao, int mx,
+                         int my) {
   const int tw = gfx.textWidth(ident);
   const int th = gfx.fontHeight();
-  constexpr int kPadX = 2;
-  constexpr int kPadY = 1;
 
   gfx.setTextDatum(textdatum_t::bottom_center);
-  const int left = mx - tw / 2 - kPadX;
-  const int top = my - th - kPadY;
-  gfx.fillRect(left, top, tw + kPadX * 2, th + kPadY, radar::kColorBackground);
+  const int left = mx - tw / 2 - kLabelPadX - radar::kRunwayLabelDotSlotPx;
+  const int top = my - th - kLabelPadY;
+  gfx.fillRect(left, top, tw + kLabelPadX * 2 + radar::kRunwayLabelDotSlotPx, th + kLabelPadY,
+               radar::kColorBackground);
+
+  const metar_parse::Category category = services::metar::category(icao);
+  if (category != metar_parse::Category::kUnknown) {
+    gfx.fillCircle(left + radar::kRunwayLabelDotSlotPx / 2, top + (th + kLabelPadY) / 2 + 1,
+                   radar::kRunwayLabelDotRadiusPx, flightCategoryColor(category));
+  }
+
   gfx.setTextColor(radar::kColorRunwayLabel, radar::kColorBackground);
   gfx.drawString(ident, mx - 1, my);
   gfx.drawString(ident, mx + 1, my);
@@ -186,7 +224,7 @@ void cacheAirportLabel(const data::large_airports::Airport& ap) {
   int lx = 0;
   int ly = 0;
   offsetLabelFromCenter(ax, ay, &lx, &ly);
-  s_cached_labels[s_cached_label_count++] = {radar_geo::airportDisplayIdent(ap.ident),
+  s_cached_labels[s_cached_label_count++] = {radar_geo::airportDisplayIdent(ap.ident), ap.ident,
                                              static_cast<int16_t>(lx),
                                              static_cast<int16_t>(ly)};
 }
@@ -195,7 +233,51 @@ radar_geo::ViewKey currentView() {
   return {services::location::lat(), services::location::lon(), radar::rangeCurrent().ring3_km};
 }
 
-void rebuildCache(const radar_geo::ViewKey& view) {
+/**
+ * Order labels nearest the center first, then keep each one that fits without covering a
+ * label already kept, trying the spot below and above it before dropping the label.
+ * (A dropped airport still has its runways drawn.) Runs once per view, not per frame.
+ */
+void resolveLabelOverlaps(lgfx::LGFXBase& gfx) {
+  for (size_t i = 1; i < s_cached_label_count; ++i) {
+    const CachedLabel moving = s_cached_labels[i];
+    const int moving_dist = radar::distSqFromCenter(moving.x, moving.y);
+    size_t j = i;
+    while (j > 0 &&
+           radar::distSqFromCenter(s_cached_labels[j - 1].x, s_cached_labels[j - 1].y) >
+               moving_dist) {
+      s_cached_labels[j] = s_cached_labels[j - 1];
+      --j;
+    }
+    s_cached_labels[j] = moving;
+  }
+
+  const int th = gfx.fontHeight();
+  const int h = th + kLabelPadY;
+  radar_geo::Rect placed[kMaxAirportLabels];
+  size_t placed_count = 0;
+  size_t kept = 0;
+  for (size_t i = 0; i < s_cached_label_count; ++i) {
+    CachedLabel label = s_cached_labels[i];
+    const int tw = gfx.textWidth(label.ident);
+    const int w = tw + kLabelPadX * 2 + radar::kRunwayLabelDotSlotPx;
+    const int left = label.x - tw / 2 - kLabelPadX - radar::kRunwayLabelDotSlotPx;
+    const int top = label.y - h;
+    const radar_geo::Rect candidates[] = {{left, top, w, h}, {left, top + h, w, h},
+                                          {left, top - h, w, h}};
+    const int pick = radar_geo::firstClearCandidate(candidates, 3, placed, placed_count);
+    if (pick < 0) {
+      continue;
+    }
+    label.y = candidates[pick].y + h;
+    placed[placed_count++] = candidates[pick];
+    s_cached_labels[kept++] = label;
+  }
+  s_cached_label_count = kept;
+}
+
+void rebuildCache(lgfx::LGFXBase& gfx, const radar_geo::ViewKey& view) {
+  xSemaphoreTake(s_cache_lock, portMAX_DELAY);
   const float radius_km = radar::fetchRadiusKm();
 
   s_cached_runway_count = 0;
@@ -233,8 +315,11 @@ void rebuildCache(const radar_geo::ViewKey& view) {
     }
   }
 
+  resolveLabelOverlaps(gfx);
+
   s_cached_view = view;
   s_cache_valid = true;
+  xSemaphoreGive(s_cache_lock);
 }
 
 }  // namespace
@@ -245,9 +330,13 @@ void drawLargeAirportRunways(lgfx::LGFXBase& gfx) {
   }
   displayFontEnsureLoaded(gfx);
 
+  // The label font must be active before the cache rebuild, which measures label text.
+  initRunwayLabelStyle(gfx);
+  applyRunwayLabelStyle(gfx);
+
   const radar_geo::ViewKey view = currentView();
   if (!s_cache_valid || !radar_geo::sameView(view, s_cached_view)) {
-    rebuildCache(view);
+    rebuildCache(gfx, view);
   }
 
   for (size_t i = 0; i < s_cached_runway_count; ++i) {
@@ -260,12 +349,27 @@ void drawLargeAirportRunways(lgfx::LGFXBase& gfx) {
     return;
   }
 
-  initRunwayLabelStyle(gfx);
-  applyRunwayLabelStyle(gfx);
   for (size_t i = 0; i < s_cached_label_count; ++i) {
-    drawBoldRunwayLabel(gfx, s_cached_labels[i].ident, s_cached_labels[i].x,
-                        s_cached_labels[i].y);
+    drawBoldRunwayLabel(gfx, s_cached_labels[i].ident, s_cached_labels[i].icao,
+                        s_cached_labels[i].x, s_cached_labels[i].y);
   }
+}
+
+bool labelsReady() {
+  xSemaphoreTake(s_cache_lock, portMAX_DELAY);
+  const bool ready = s_cache_valid;
+  xSemaphoreGive(s_cache_lock);
+  return ready;
+}
+
+size_t snapshotLabelIcaos(const char** out, size_t max) {
+  xSemaphoreTake(s_cache_lock, portMAX_DELAY);
+  const size_t count = s_cached_label_count < max ? s_cached_label_count : max;
+  for (size_t i = 0; i < count; ++i) {
+    out[i] = s_cached_labels[i].icao;
+  }
+  xSemaphoreGive(s_cache_lock);
+  return count;
 }
 
 }  // namespace ui::runway

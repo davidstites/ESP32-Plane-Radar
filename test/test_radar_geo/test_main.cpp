@@ -119,6 +119,40 @@ TEST(RadarGeoTest, ClipFallsBackToStartWhenNoStepFits) {
   EXPECT_EQ(p.y, 0);
 }
 
+TEST(RadarGeoTest, RectsOverlapWhenTheyShareArea) {
+  const radar_geo::Rect a = {10, 10, 20, 10};
+  EXPECT_TRUE(radar_geo::rectsOverlap(a, {25, 15, 20, 10}));  // corner
+  EXPECT_TRUE(radar_geo::rectsOverlap(a, {12, 12, 4, 4}));    // contained
+  EXPECT_TRUE(radar_geo::rectsOverlap({12, 12, 4, 4}, a));    // symmetric
+}
+
+TEST(RadarGeoTest, RectsThatOnlyTouchDoNotOverlap) {
+  const radar_geo::Rect a = {10, 10, 20, 10};
+  EXPECT_FALSE(radar_geo::rectsOverlap(a, {30, 10, 5, 10}));  // right edge
+  EXPECT_FALSE(radar_geo::rectsOverlap(a, {10, 20, 20, 5}));  // bottom edge
+  EXPECT_FALSE(radar_geo::rectsOverlap(a, {0, 10, 10, 10}));  // left edge
+  EXPECT_FALSE(radar_geo::rectsOverlap(a, {10, 0, 20, 10}));  // top edge
+  EXPECT_FALSE(radar_geo::rectsOverlap(a, {100, 100, 5, 5}));  // far away
+}
+
+TEST(RadarGeoTest, FirstClearCandidatePrefersTheEarliestFreeOne) {
+  const radar_geo::Rect placed[] = {{0, 0, 10, 10}, {20, 0, 10, 10}};
+  const radar_geo::Rect candidates[] = {{5, 5, 10, 10}, {22, 2, 4, 4}, {40, 40, 4, 4}, {60, 60, 4, 4}};
+  EXPECT_EQ(radar_geo::firstClearCandidate(candidates, 4, placed, 2), 2);
+}
+
+TEST(RadarGeoTest, FirstClearCandidateIsTheFirstWhenNothingIsPlaced) {
+  const radar_geo::Rect candidates[] = {{5, 5, 10, 10}, {40, 40, 4, 4}};
+  EXPECT_EQ(radar_geo::firstClearCandidate(candidates, 2, nullptr, 0), 0);
+}
+
+TEST(RadarGeoTest, FirstClearCandidateReportsMinusOneWhenAllCollide) {
+  const radar_geo::Rect placed[] = {{0, 0, 50, 50}};
+  const radar_geo::Rect candidates[] = {{5, 5, 10, 10}, {20, 20, 4, 4}};
+  EXPECT_EQ(radar_geo::firstClearCandidate(candidates, 2, placed, 1), -1);
+  EXPECT_EQ(radar_geo::firstClearCandidate(candidates, 0, placed, 1), -1);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

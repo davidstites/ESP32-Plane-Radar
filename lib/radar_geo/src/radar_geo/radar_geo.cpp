@@ -97,4 +97,22 @@ ScreenPoint clipToDisc(ScreenPoint from, ScreenPoint to, int center_x, int cente
   return from;
 }
 
+bool rectsOverlap(const Rect& a, const Rect& b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+int firstClearCandidate(const Rect* candidates, size_t candidate_count, const Rect* placed,
+                        size_t placed_count) {
+  for (size_t c = 0; c < candidate_count; ++c) {
+    bool clear = true;
+    for (size_t p = 0; p < placed_count && clear; ++p) {
+      clear = !rectsOverlap(candidates[c], placed[p]);
+    }
+    if (clear) {
+      return static_cast<int>(c);
+    }
+  }
+  return -1;
+}
+
 }  // namespace radar_geo

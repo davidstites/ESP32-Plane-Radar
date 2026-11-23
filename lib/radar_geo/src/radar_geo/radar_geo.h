@@ -77,4 +77,22 @@ int distSq(int x, int y, int center_x, int center_y);
 ScreenPoint clipToDisc(ScreenPoint from, ScreenPoint to, int center_x, int center_y,
                        int radius);
 
+/** Axis-aligned pixel rectangle: x, y is the top-left corner. */
+struct Rect {
+  int x;
+  int y;
+  int w;
+  int h;
+};
+
+/** True when the rectangles share area; rectangles that only touch along an edge do not overlap. */
+bool rectsOverlap(const Rect& a, const Rect& b);
+
+/**
+ * Index of the first candidate that overlaps none of the placed rectangles, or -1 if
+ * every candidate collides. Candidates are tried in order, so put the preferred one first.
+ */
+int firstClearCandidate(const Rect* candidates, size_t candidate_count, const Rect* placed,
+                        size_t placed_count);
+
 }  // namespace radar_geo

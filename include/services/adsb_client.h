@@ -9,6 +9,12 @@ namespace services::adsb {
 using Aircraft = adsb_parse::Aircraft;
 using adsb_parse::kMaxAircraft;
 
+/**
+ * Close the kept-alive TLS session, freeing its heap for another connection. Call only from
+ * the task that runs fetchUpdate(); the next fetchUpdate() reconnects.
+ */
+void closeConnection();
+
 /** Create the internal lock. Call once before any fetch/snapshot. */
 void init();
 
