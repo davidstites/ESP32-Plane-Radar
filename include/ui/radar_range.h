@@ -45,6 +45,8 @@ float fetchRadiusKm();
 
 bool useMiles();
 bool showRunways();
+/** Whether the NEXRAD precipitation layer is on (US coverage only). */
+bool showPrecip();
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);
 /**
@@ -55,6 +57,7 @@ void saveRangeFromPortal(const char* text);
 /** The current range in the display units, for prefilling the portal field. */
 void formatRangeForPortal(char* buf, size_t len);
 void saveRunwaysFromPortal(const char* checkbox_value);
+void savePrecipFromPortal(const char* checkbox_value);
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles);
 void formatCurrentRing3Label(char* buf, size_t len);
 /** Reset distance units to km (e.g. with WiFi credential wipe). */

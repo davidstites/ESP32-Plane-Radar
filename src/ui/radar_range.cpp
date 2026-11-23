@@ -18,6 +18,7 @@ constexpr char kPrefsRangeKey[] = "rangeIdx";  // legacy: preset index
 constexpr char kPrefsRingKmKey[] = "ring3Km";
 constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
+constexpr char kPrefsPrecipKey[] = "showPrecip";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
 constexpr float kKmPerMile = radar_geo::kKmPerMile;
 
@@ -25,6 +26,7 @@ Preferences s_prefs;
 float s_ring3_km = kRangePresets[kDefaultRangeIndex].ring3_km;
 bool s_use_miles = false;
 bool s_show_runways = true;
+bool s_show_precip = true;
 
 void saveRingKm() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
@@ -39,6 +41,14 @@ void saveUseMiles() {
     return;
   }
   s_prefs.putBool(kPrefsMilesKey, s_use_miles);
+  s_prefs.end();
+}
+
+void saveShowPrecip() {
+  if (!s_prefs.begin(kPrefsNamespace, false)) {
+    return;
+  }
+  s_prefs.putBool(kPrefsPrecipKey, s_show_precip);
   s_prefs.end();
 }
 
@@ -78,6 +88,7 @@ void rangeInit() {
   }
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
+  s_show_precip = s_prefs.getBool(kPrefsPrecipKey, true);
   s_prefs.end();
 }
 
@@ -102,6 +113,8 @@ float fetchRadiusKm() {
 bool useMiles() { return s_use_miles; }
 
 bool showRunways() { return s_show_runways; }
+
+bool showPrecip() { return s_show_precip; }
 
 void saveMilesFromPortal(const char* checkbox_value) {
   s_use_miles = portalCheckboxChecked(checkbox_value);
@@ -132,6 +145,12 @@ void saveRunwaysFromPortal(const char* checkbox_value) {
   Serial.printf("Runway overlay: %s\n", s_show_runways ? "on" : "off");
 }
 
+void savePrecipFromPortal(const char* checkbox_value) {
+  s_show_precip = portalCheckboxChecked(checkbox_value);
+  saveShowPrecip();
+  Serial.printf("Precipitation overlay: %s\n", s_show_precip ? "on" : "off");
+}
+
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles) {
   if (use_miles) {
     const int mi = static_cast<int>(lroundf(ring3_km / kKmPerMile));
@@ -149,9 +168,11 @@ void formatCurrentRing3Label(char* buf, size_t len) {
 void unitsReset() {
   s_use_miles = false;
   s_show_runways = true;
+  s_show_precip = true;
   if (s_prefs.begin(kPrefsNamespace, false)) {
     s_prefs.remove(kPrefsMilesKey);
     s_prefs.remove(kPrefsRunwaysKey);
+    s_prefs.remove(kPrefsPrecipKey);
     s_prefs.end();
   }
 }

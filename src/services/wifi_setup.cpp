@@ -62,6 +62,10 @@ char s_runways_checkbox_attrs[32] = "type=\"checkbox\"";
 WiFiManagerParameter s_param_runways("show_runways", "Show airport runways", "T", 2,
                                      s_runways_checkbox_attrs, WFM_LABEL_AFTER);
 
+char s_precip_checkbox_attrs[32] = "type=\"checkbox\"";
+WiFiManagerParameter s_param_precip("show_precip", "Show NEXRAD precipitation (US only)", "T", 2,
+                                    s_precip_checkbox_attrs, WFM_LABEL_AFTER);
+
 void refreshPortalParamValues() {
   char lat_buf[kCoordParamLen + 1];
   char lon_buf[kCoordParamLen + 1];
@@ -79,6 +83,9 @@ void refreshPortalParamValues() {
   snprintf(s_runways_checkbox_attrs, sizeof(s_runways_checkbox_attrs),
            "type=\"checkbox\"%s", ui::radar::showRunways() ? " checked" : "");
   s_param_runways.setValue("T", 2);
+  snprintf(s_precip_checkbox_attrs, sizeof(s_precip_checkbox_attrs),
+           "type=\"checkbox\"%s", ui::radar::showPrecip() ? " checked" : "");
+  s_param_precip.setValue("T", 2);
 }
 
 void onPortalParamsSaved() {
@@ -91,6 +98,7 @@ void onPortalParamsSaved() {
     ui::radar::saveRangeFromPortal(s_param_range.getValue());
   }
   ui::radar::saveRunwaysFromPortal(s_param_runways.getValue());
+  ui::radar::savePrecipFromPortal(s_param_precip.getValue());
 
   refreshPortalParamValues();
 }
@@ -102,6 +110,7 @@ void attachPortalParams(WiFiManager& wm) {
   wm.addParameter(&s_param_miles);
   wm.addParameter(&s_param_range);
   wm.addParameter(&s_param_runways);
+  wm.addParameter(&s_param_precip);
   wm.setSaveParamsCallback(onPortalParamsSaved);
 }
 

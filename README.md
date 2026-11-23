@@ -76,6 +76,14 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
 - Labels that would overlap are moved just below or above, or dropped (nearest the center wins); the runway lines stay
 - Update the embedded list: `python3 scripts/build_large_airports.py`
 
+### Precipitation (US only)
+
+- A faint NEXRAD base-reflectivity layer behind the grid: green for light, yellow for moderate, red for heavy. It is the Iowa Mesonet radar mosaic, so it covers the US only; elsewhere the layer stays empty
+- Refreshed every 15 minutes and shortly after the range or location changes; until the image for the new view arrives, nothing is drawn rather than a misplaced layer
+- While it shows, only the labeled ring and the outer ring are drawn; the inner rings return when it is off
+- Toggle **Show NEXRAD precipitation (US only)** in the Wi‑Fi setup portal (on by default)
+- The image is a 120×120 palette PNG (about 0.1-6 KB) fetched over plain HTTP: the radar host's TLS certificate chain does not fit in the ESP32-C3's heap. It is public imagery, decoded by a bounded in-firmware PNG decoder (`lib/nexrad_decode`)
+
 ### Aircraft
 
 - **Inside the outer ring** — red heading triangle, magenta speed vector (clipped at the ring), callsign / type / altitude tags

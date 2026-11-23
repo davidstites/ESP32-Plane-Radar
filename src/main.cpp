@@ -11,6 +11,7 @@
 #include "services/adsb_client.h"
 #include "services/metar_client.h"
 #include "services/net_worker.h"
+#include "services/precip_client.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
@@ -75,6 +76,7 @@ void setup() {
   ui::radar::rangeInit();
   services::adsb::init();
   services::metar::init();
+  services::precip::init();
 
   if (wifiSetupConnect()) {
     showRadarIfConnected();

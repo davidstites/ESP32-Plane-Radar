@@ -109,6 +109,20 @@ constexpr uint8_t kFcLifrR = 255;
 constexpr uint8_t kFcLifrG = 0;
 constexpr uint8_t kFcLifrB = 255;
 
+/**
+ * Precipitation layer tints as seen on screen: about a quarter of full intensity, the
+ * faintest the 3-bit-per-channel frame buffer can show above the background.
+ */
+constexpr uint8_t kPrecipLightR = 0;
+constexpr uint8_t kPrecipLightG = 73;
+constexpr uint8_t kPrecipLightB = 0;
+constexpr uint8_t kPrecipModerateR = 73;
+constexpr uint8_t kPrecipModerateG = 73;
+constexpr uint8_t kPrecipModerateB = 0;
+constexpr uint8_t kPrecipHeavyR = 109;
+constexpr uint8_t kPrecipHeavyG = 0;
+constexpr uint8_t kPrecipHeavyB = 0;
+
 extern uint16_t kColorBackground;
 extern uint16_t kColorGrid;
 extern uint16_t kColorLabel;

@@ -43,3 +43,13 @@ Recorded adsb.fi responses used by the `native` unit tests.
   curl -s "https://aviationweather.gov/api/data/metar?ids=KSFO,KORD,KJFK,KE16,KDFW&format=json&hours=3" \
     -o test/fixtures/metar_5_stations_3h.json
   ```
+
+- `nexrad_120_8bit.png`, `nexrad_120_4bit.png`, `nexrad_120_1bit_clear.png` — 120x120 NEXRAD
+  base-reflectivity images from the Iowa Mesonet WMS (`image/png; mode=8bit`), used by
+  `test_nexrad_decode`. The server writes the smallest palette bit depth that fits the colors:
+  8-bit with echoes (Dallas), 4-bit with a few (Phoenix), 1-bit when clear (San Jose). Fetch
+  with the request `nexrad::buildRequestPath` builds for the view, e.g.:
+
+  ```bash
+  curl -s "http://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=nexrad-n0q-900913&STYLES=&SRS=EPSG:3857&BBOX=<minx>,<miny>,<maxx>,<maxy>&WIDTH=120&HEIGHT=120&FORMAT=image/png%3B%20mode%3D8bit&TRANSPARENT=TRUE" -o out.png
+  ```

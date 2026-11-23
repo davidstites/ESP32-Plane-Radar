@@ -9,6 +9,7 @@
 #include "config.h"
 #include "services/adsb_client.h"
 #include "services/metar_client.h"
+#include "services/precip_client.h"
 #include "services/radar_location.h"
 #include "ui/radar_range.h"
 #include "ui/runway_overlay.h"
@@ -45,11 +46,16 @@ bool refreshMetars() {
  */
 bool refreshFeeds() {
   adsb::closeConnection();
-  const bool ok = refreshMetars();
-  Serial.printf("feeds: %s, heap free %u (lowest ever %u)\n", ok ? "ok" : "failed",
+  const bool metar_ok = refreshMetars();
+  // One attempt: a failure is retried by the scheduler after kFeedRetryMs.
+  const bool precip_ok = !ui::radar::showPrecip() ||
+                         precip::fetch(currentView(), ui::radar::rangeCurrent().outer_km);
+  Serial.printf("feeds: metar %s, precip %s; heap free %u (lowest ever %u), stack headroom %u B\n",
+                metar_ok ? "ok" : "failed", precip_ok ? "ok" : "failed",
                 static_cast<unsigned>(ESP.getFreeHeap()),
-                static_cast<unsigned>(ESP.getMinFreeHeap()));
-  return ok;
+                static_cast<unsigned>(ESP.getMinFreeHeap()),
+                static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+  return metar_ok && precip_ok;
 }
 
 // Pinned to core 0, away from the render loop on core 1. The HTTPS requests block for
@@ -59,6 +65,7 @@ void workerTask(void*) {
   net_schedule::Scheduler scheduler({config::kAdsbFetchIntervalMs, config::kFeedRefreshIntervalMs,
                                      config::kFeedRetryMs, config::kViewSettleMs});
   radar_geo::ViewKey last_view = currentView();
+  bool last_show_precip = ui::radar::showPrecip();
   for (;;) {
     if (WiFi.status() != WL_CONNECTED) {
       vTaskDelay(pdMS_TO_TICKS(net_schedule::kMaxSleepMs));
@@ -71,7 +78,13 @@ void workerTask(void*) {
       scheduler.onViewChanged(now);
       last_view = view;
     }
-    scheduler.setFeedsReady(ui::runway::labelsReady());
+    // Turning the radar layer on needs its image: treat it like a view change.
+    const bool show_precip = ui::radar::showPrecip();
+    if (show_precip && !last_show_precip) {
+      scheduler.onViewChanged(now);
+    }
+    last_show_precip = show_precip;
+    scheduler.setFeedsReady(ui::runway::labelsReady() || show_precip);
 
     switch (scheduler.next(now)) {
       case net_schedule::Action::kPollAdsb:

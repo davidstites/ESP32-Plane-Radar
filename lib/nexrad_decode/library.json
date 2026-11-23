@@ -1,0 +1,7 @@
+{
+  "name": "nexrad_decode",
+  "version": "1.0.0",
+  "description": "Arduino-free NEXRAD radar tile decoding: 8-bit palette PNG to a coarse precipitation grid, and the map request that fetches it",
+  "platforms": "*",
+  "frameworks": "*"
+}
