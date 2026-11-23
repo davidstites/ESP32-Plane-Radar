@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -14,6 +15,7 @@ using setup_link::LocationResult;
 using setup_link::makeToken;
 using setup_link::parseLatLon;
 using setup_link::tokenMatches;
+using setup_link::validLatLon;
 
 namespace {
 
@@ -144,6 +146,16 @@ TEST(ParseLatLonTest, RejectsBadInputAndLeavesOutputsUntouched) {
     EXPECT_EQ(lat, 111.0);
     EXPECT_EQ(lon, 222.0);
   }
+}
+
+TEST(ValidLatLonTest, ChecksRangeAndRejectsNonFinite) {
+  EXPECT_TRUE(validLatLon(0.0, 0.0));
+  EXPECT_TRUE(validLatLon(90.0, 180.0));
+  EXPECT_TRUE(validLatLon(-90.0, -180.0));
+  EXPECT_FALSE(validLatLon(90.1, 0.0));
+  EXPECT_FALSE(validLatLon(0.0, -180.1));
+  EXPECT_FALSE(validLatLon(std::nan(""), 0.0));
+  EXPECT_FALSE(validLatLon(0.0, std::nan("")));
 }
 
 TEST_F(HandleLocationTest, SavesValidRequest) {

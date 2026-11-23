@@ -39,6 +39,11 @@ constexpr int kCoordParamLen = 20;
 constexpr char kCoordInputAttrs[] =
     " type=\"number\" step=\"0.000001\"";
 
+// What the lat/lon fields were prefilled with: unchanged values must not be saved, or the
+// first Wi-Fi save would store the default location as if the user had chosen it.
+char s_lat_prefill[kCoordParamLen + 1] = "";
+char s_lon_prefill[kCoordParamLen + 1] = "";
+
 WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
 WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
@@ -71,6 +76,8 @@ void refreshPortalParamValues() {
   char lon_buf[kCoordParamLen + 1];
   snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
   snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
+  strncpy(s_lat_prefill, lat_buf, sizeof(s_lat_prefill));
+  strncpy(s_lon_prefill, lon_buf, sizeof(s_lon_prefill));
   s_param_lat.setValue(lat_buf, kCoordParamLen);
   s_param_lon.setValue(lon_buf, kCoordParamLen);
   char range_buf[kRangeParamLen + 1];
@@ -89,7 +96,9 @@ void refreshPortalParamValues() {
 }
 
 void onPortalParamsSaved() {
-  if (!services::location::saveFromStrings(s_param_lat.getValue(),
+  if ((strcmp(s_param_lat.getValue(), s_lat_prefill) != 0 ||
+       strcmp(s_param_lon.getValue(), s_lon_prefill) != 0) &&
+      !services::location::saveFromStrings(s_param_lat.getValue(),
                                            s_param_lon.getValue())) {
     Serial.println("Invalid lat/lon in portal — keeping previous location");
   }

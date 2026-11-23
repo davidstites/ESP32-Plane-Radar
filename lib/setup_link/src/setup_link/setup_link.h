@@ -20,6 +20,9 @@ bool tokenMatches(const char* expected, const char* given);
 size_t buildSetupUrl(char* out, size_t cap, const char* base, const char* ip,
                      const char* token);
 
+/** True when both values are finite and within [-90, 90] / [-180, 180]. */
+bool validLatLon(double lat, double lon);
+
 /** Parses and range-checks a lat/lon pair; outputs are untouched on failure. */
 bool parseLatLon(const char* lat_text, const char* lon_text, double* lat, double* lon);
 

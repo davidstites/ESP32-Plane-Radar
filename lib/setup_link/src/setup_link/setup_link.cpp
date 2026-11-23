@@ -72,13 +72,18 @@ size_t buildSetupUrl(char* out, size_t cap, const char* base, const char* ip,
   return static_cast<size_t>(n);
 }
 
+bool validLatLon(double lat, double lon) {
+  return std::isfinite(lat) && std::isfinite(lon) && lat >= -90.0 && lat <= 90.0 &&
+         lon >= -180.0 && lon <= 180.0;
+}
+
 bool parseLatLon(const char* lat_text, const char* lon_text, double* lat, double* lon) {
   double la = 0.0;
   double lo = 0.0;
   if (!parseCoord(lat_text, &la) || !parseCoord(lon_text, &lo)) {
     return false;
   }
-  if (la < -90.0 || la > 90.0 || lo < -180.0 || lo > 180.0) {
+  if (!validLatLon(la, lo)) {
     return false;
   }
   *lat = la;

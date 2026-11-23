@@ -9,6 +9,9 @@ void init();
 double lat();
 double lon();
 
+/** True once a valid location was loaded from NVS or saved this boot; false after clear(). */
+bool hasSaved();
+
 /** Parse portal strings, validate, persist to NVS, update runtime values. */
 bool saveFromStrings(const char* lat_str, const char* lon_str);
 
