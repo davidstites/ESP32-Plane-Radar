@@ -14,7 +14,7 @@ Replaces raw lat/lon entry. Users do not know their coordinates, and a home is r
 
 ## Device endpoint
 
-`GET /location?lat=&lon=&token=` on the WiFiManager web server. The token is a per-boot random 6-character code. Wrong or missing token: 403, nothing saved. Bad coordinates: 400, nothing saved. Success saves via the existing validation and replies with a short HTML page. The token defends against drive-by cross-site navigation to `plane-radar.local`, not against peers on the LAN (the portal itself is unauthenticated).
+`GET /location?lat=&lon=&token=` on the WiFiManager web server. The token is a per-boot random 6-character code. Wrong or missing token: 403, nothing saved. Bad coordinates: 400, nothing saved. Success saves via the existing validation and replies with a short HTML page. The token stops stray or mistyped requests, and pairs the page with the device on screen. It is not a security boundary: the portal is unauthenticated, and WiFiManager's built-in `/paramsave` and `/wifisave` accept requests without it.
 
 ## Portal
 

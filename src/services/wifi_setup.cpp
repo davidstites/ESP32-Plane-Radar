@@ -260,6 +260,10 @@ void handleLocationRoute() {
   const char* message = "";
   const int status =
       services::setup::handleLocation(token.c_str(), lat.c_str(), lon.c_str(), &message);
+  if (status == 200) {
+    // Keep the portal's lat/lon fields and their prefill in step with the saved location.
+    refreshPortalParamValues();
+  }
   String page =
       "<!doctype html><meta charset=\"utf-8\">"
       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"

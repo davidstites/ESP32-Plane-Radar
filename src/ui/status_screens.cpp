@@ -33,11 +33,14 @@ struct SpinnerDot {
 };
 
 constexpr uint16_t kQrLight = 0xFFFF;
-constexpr int kQrModulePx = 4;
-/** Top of the QR: low enough that its corners stay inside the round panel. */
-constexpr int kQrTopPx = 30;
-constexpr int kSetupLine1Y = 176;
-constexpr int kSetupLineStepPx = 20;
+/** Version 3+ codes (29+ modules) use smaller modules so the quiet zone fits the round panel. */
+constexpr int kQrLargeModulePx = 3;
+constexpr int kQrSmallModulePx = 4;
+constexpr int kQrLargeMinSize = 29;
+/** Top of the QR: low enough that its corners keep a wide margin inside the circle. */
+constexpr int kQrTopPx = 34;
+constexpr int kSetupLine1Y = 158;
+constexpr int kSetupLineStepPx = 22;
 setup_link::QrCode s_setup_qr;
 
 char s_connecting_ssid[33];
@@ -254,12 +257,14 @@ void statusScreenSetupQr(const char* url, const char* ip, const char* token) {
   tft.fillScreen(kQrLight);
 
   if (setup_link::encodeQr(url, &s_setup_qr)) {
-    const int left = kCenterX - s_setup_qr.size * kQrModulePx / 2;
+    const int module_px =
+        s_setup_qr.size >= kQrLargeMinSize ? kQrLargeModulePx : kQrSmallModulePx;
+    const int left = kCenterX - s_setup_qr.size * module_px / 2;
     for (int y = 0; y < s_setup_qr.size; ++y) {
       for (int x = 0; x < s_setup_qr.size; ++x) {
         if (s_setup_qr.module(static_cast<uint8_t>(x), static_cast<uint8_t>(y))) {
-          tft.fillRect(left + x * kQrModulePx, kQrTopPx + y * kQrModulePx, kQrModulePx,
-                       kQrModulePx, config::kColorBlack);
+          tft.fillRect(left + x * module_px, kQrTopPx + y * module_px, module_px, module_px,
+                       config::kColorBlack);
         }
       }
     }

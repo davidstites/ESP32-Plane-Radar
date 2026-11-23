@@ -46,7 +46,7 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 | **Display distances in miles** | Ring scale label in **mi** instead of **km** (e.g. `6mi` vs `10km`) |
 | **Show airport runways** | Major-airport runway overlay on the radar (off to hide) |
 
-**Location hand-off** (`GET /location?lat=…&lon=…&token=…`): the hosted page navigates your browser to the device with the setup code from the QR screen. A wrong or missing code returns 403, bad coordinates 400, and nothing is saved. The code is random per boot and guards against other websites changing your radar's center; it is not a password, since the portal itself has no login.
+**Location hand-off** (`GET /location?lat=…&lon=…&token=…`): the hosted page navigates your browser to the device with the setup code from the QR screen. A wrong or missing code returns 403, bad coordinates 400, and nothing is saved. The code is random per boot and stops a stray or mistyped request from changing your radar's center. It is not a security boundary: the portal has no login, and WiFiManager's own `/paramsave` and `/wifisave` pages accept requests from any page on your network without a code.
 
 After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
 
