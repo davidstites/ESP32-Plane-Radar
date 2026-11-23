@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace radar_geo {
@@ -7,6 +8,9 @@ namespace radar_geo {
 /** Flat-earth approximation: 1° of latitude ≈ 111 km. */
 constexpr float kKmPerDeg = 111.0f;
 constexpr float kDegToRad = 0.01745329252f;
+constexpr float kKmPerMile = 1.609344f;
+/** Largest radar range (the scale shown on the ring) a user can set. */
+constexpr float kMaxRingMiles = 25.0f;
 
 /** Offset from the radar center in km: x east, y north, and straight-line distance. */
 struct OffsetKm {
@@ -25,11 +29,26 @@ struct ScreenPoint {
   int y;
 };
 
+/**
+ * ICAO code as shown on screen: a leading K (contiguous US) is dropped from 4-letter codes,
+ * so KSJC reads SJC and KE16 reads E16. Other codes are returned unchanged. Points into icao.
+ */
+const char* airportDisplayIdent(const char* icao);
+
+/**
+ * Parse a range typed in the portal, in miles or km, into km. Clamped to between one unit
+ * (1 mi or 1 km) and kMaxRingMiles. Returns false, leaving *out_km alone, if text is not a number.
+ */
+bool parseRingRangeKm(const char* text, bool use_miles, float* out_km);
+
+/** The first preset larger than current_km, or the first preset when none is larger. */
+float nextRingKm(float current_km, const float* presets_km, size_t count);
+
 /** What the projection depends on: a layer drawn from it stays valid while the key is equal. */
 struct ViewKey {
   double center_lat;
   double center_lon;
-  uint8_t range_index;
+  float ring3_km;
 };
 
 bool sameView(const ViewKey& a, const ViewKey& b);

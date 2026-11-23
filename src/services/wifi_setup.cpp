@@ -44,6 +44,16 @@ WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
 WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
 
+constexpr int kRangeParamLen = 8;
+constexpr char kRangeInputAttrs[] = " type=\"number\" step=\"any\" min=\"1\" max=\"40\"";
+
+// What the range field was prefilled with: if it comes back unchanged the user did not edit
+// it, and re-parsing the rounded text would drift the range (or reinterpret it after a units change).
+char s_range_prefill[kRangeParamLen + 1] = "";
+
+WiFiManagerParameter s_param_range("radar_range", "Radar range (max 25 mi)", "10",
+                                   kRangeParamLen, kRangeInputAttrs);
+
 char s_miles_checkbox_attrs[32] = "type=\"checkbox\"";
 WiFiManagerParameter s_param_miles("use_miles", "Display distances in miles", "T", 2,
                                    s_miles_checkbox_attrs, WFM_LABEL_AFTER);
@@ -59,6 +69,10 @@ void refreshPortalParamValues() {
   snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
   s_param_lat.setValue(lat_buf, kCoordParamLen);
   s_param_lon.setValue(lon_buf, kCoordParamLen);
+  char range_buf[kRangeParamLen + 1];
+  ui::radar::formatRangeForPortal(range_buf, sizeof(range_buf));
+  strncpy(s_range_prefill, range_buf, sizeof(s_range_prefill));
+  s_param_range.setValue(range_buf, kRangeParamLen);
   snprintf(s_miles_checkbox_attrs, sizeof(s_miles_checkbox_attrs), "type=\"checkbox\"%s",
            ui::radar::useMiles() ? " checked" : "");
   s_param_miles.setValue("T", 2);
@@ -73,6 +87,9 @@ void onPortalParamsSaved() {
     Serial.println("Invalid lat/lon in portal — keeping previous location");
   }
   ui::radar::saveMilesFromPortal(s_param_miles.getValue());
+  if (strcmp(s_param_range.getValue(), s_range_prefill) != 0) {
+    ui::radar::saveRangeFromPortal(s_param_range.getValue());
+  }
   ui::radar::saveRunwaysFromPortal(s_param_runways.getValue());
 
   refreshPortalParamValues();
@@ -83,6 +100,7 @@ void attachPortalParams(WiFiManager& wm) {
   wm.addParameter(&s_param_lat);
   wm.addParameter(&s_param_lon);
   wm.addParameter(&s_param_miles);
+  wm.addParameter(&s_param_range);
   wm.addParameter(&s_param_runways);
   wm.setSaveParamsCallback(onPortalParamsSaved);
 }
