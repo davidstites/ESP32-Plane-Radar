@@ -14,6 +14,7 @@
 #include "hardware/display.h"
 #include "hardware/display_font.h"
 #include "services/adsb_client.h"
+#include "ui/precip_overlay.h"
 #include "ui/radar_projection.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
@@ -602,8 +603,11 @@ void drawGridRing(int cx, int cy, int r, uint16_t color) {
   }
 }
 
-void drawRings(int cx, int cy, int outer_radius) {
-  for (int i = 1; i <= radar::kRingCount; ++i) {
+void drawRings(int cx, int cy, int outer_radius, bool precip_shown) {
+  // Over the weather layer keep only the labeled ring and the outer ring: the inner two
+  // would cut across the precipitation and add clutter.
+  const int first_ring = precip_shown ? radar::kRingCount - 1 : 1;
+  for (int i = first_ring; i <= radar::kRingCount; ++i) {
     const int r = (outer_radius * i) / radar::kRingCount;
     drawGridRing(cx, cy, r, radar::kColorGrid);
   }
@@ -653,7 +657,8 @@ void drawStaticGrid(Gfx& gfx) {
   const int grid_r = radar::kGridOuterRadius;
 
   gfx.fillScreen(radar::kColorBackground);
-  drawRings(cx, cy, grid_r);
+  const bool precip_shown = precip::draw(gfx);
+  drawRings(cx, cy, grid_r, precip_shown);
   drawCrosshairs(cx, cy, grid_r, radar::kColorGrid);
   initPalette();
   runway::drawLargeAirportRunways(gfx);
