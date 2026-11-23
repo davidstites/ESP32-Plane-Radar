@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 
+#include <radar_geo/label_spots.h>
 #include <radar_geo/radar_geo.h>
 
 #include "config.h"
@@ -340,30 +341,23 @@ int measureTagBlockWidth(const services::adsb::Aircraft& plane) {
   return max_w;
 }
 
-void drawAircraftTag(int x, int y, const services::adsb::Aircraft& plane) {
+int tagBlockHeight(const services::adsb::Aircraft& plane) {
+  return s_draw->fontHeight() * (plane.speed[0] != '\0' ? 4 : 3);
+}
+
+void drawAircraftTag(const services::adsb::Aircraft& plane, const radar_geo::TagSpot& spot) {
   initTagLabelMetrics();
   applyTagStyle();
 
   const int line_h = s_draw->fontHeight();
-  const int block_w = measureTagBlockWidth(plane);
-  const int block_h = line_h * (plane.speed[0] != '\0' ? 4 : 3);
-  int ly = y - block_h / 2;
-
-  const int symbol_half =
-      radar::kAircraftNoseLenPx + radar::kAircraftTailHalfPx;
-  // West (left): tag toward center on the right; east (right): tag on the left.
-  const bool tag_on_right = x < radar::kCenterX;
-  int anchor_x = 0;
-  if (tag_on_right) {
-    anchor_x = x + symbol_half + radar::kAircraftLabelGapPx;
-    anchor_x = std::min(anchor_x, radar::kSize - block_w - 1);
-    s_draw->setTextDatum(textdatum_t::top_left);
-  } else {
-    anchor_x = x - symbol_half - radar::kAircraftLabelGapPx;
-    anchor_x = std::max(anchor_x, block_w + 1);
+  int ly = spot.rect.y;
+  int anchor_x = spot.rect.x;
+  if (spot.right_aligned) {
+    anchor_x = spot.rect.x + spot.rect.w;
     s_draw->setTextDatum(textdatum_t::top_right);
+  } else {
+    s_draw->setTextDatum(textdatum_t::top_left);
   }
-  ly = std::max(1, std::min(ly, radar::kSize - block_h - 1));
 
   if (plane.callsign[0] != '\0') {
     s_draw->setTextColor(radar::kColorLabel, radar::kColorBackground);
@@ -423,6 +417,68 @@ void sortBeyondDotsFarFirst(BeyondDotDrawItem* items, size_t count) {
       --j;
     }
     items[j] = key;
+  }
+}
+
+/**
+ * Draw every aircraft's tag without covering another tag, and where possible without
+ * covering another aircraft. Walking nearest-to-center first, each tag takes the first of
+ * several spots around its symbol (see radar_geo::tagSpots) that is free, preferring the spot
+ * it used last frame so tags do not hop about as the aircraft move. Where every spot is taken
+ * (a crowd at a wide range) the tag stays put and overlaps. items is sorted far first.
+ */
+void drawAircraftTags(const services::adsb::Aircraft* planes, const AircraftDrawItem* items,
+                      size_t draw_count) {
+  static radar_geo::SpotMemory s_spot_memory;
+  static uint32_t s_frame = 0;
+  ++s_frame;
+
+  const int symbol_half = radar::kAircraftNoseLenPx + radar::kAircraftTailHalfPx;
+  // Static, not on the stack: the loop task has little headroom, and drawing is single-threaded.
+  static radar_geo::Rect symbols[services::adsb::kMaxAircraft];
+  static radar_geo::Rect placed[services::adsb::kMaxAircraft];
+  static uint8_t picks[services::adsb::kMaxAircraft];
+  for (size_t d = 0; d < draw_count; ++d) {
+    symbols[d] = {items[d].x - radar::kAircraftNoseLenPx, items[d].y - radar::kAircraftNoseLenPx,
+                  radar::kAircraftNoseLenPx * 2, radar::kAircraftNoseLenPx * 2};
+  }
+
+  initTagLabelMetrics();
+  applyTagStyle();
+  size_t placed_count = 0;
+  for (size_t d = draw_count; d-- > 0;) {
+    const services::adsb::Aircraft& plane = planes[items[d].index];
+    radar_geo::TagSpot spots[radar_geo::kTagSpotCount];
+    radar_geo::Rect rects[radar_geo::kTagSpotCount];
+    radar_geo::tagSpots(items[d].x, items[d].y, measureTagBlockWidth(plane), tagBlockHeight(plane),
+                        symbol_half, radar::kAircraftLabelGapPx, radar::kSize,
+                        items[d].x < radar::kCenterX, spots);
+    for (size_t k = 0; k < radar_geo::kTagSpotCount; ++k) {
+      rects[k] = spots[k].rect;
+    }
+
+    const uint32_t key = radar_geo::hashLabelKey(plane.callsign);
+    const int remembered = plane.callsign[0] != '\0' ? s_spot_memory.get(key, s_frame) : -1;
+    int pick = radar_geo::pickClearSpot(rects, radar_geo::kTagSpotCount, remembered, placed,
+                                        placed_count, symbols, draw_count);
+    if (pick < 0) {
+      pick = remembered >= 0 ? remembered : 0;
+    }
+    if (plane.callsign[0] != '\0') {
+      s_spot_memory.set(key, pick, s_frame);
+    }
+    placed[placed_count++] = rects[pick];
+    picks[d] = static_cast<uint8_t>(pick);
+  }
+
+  // Draw far first so, where tags still overlap, the nearer aircraft's tag is on top.
+  for (size_t d = 0; d < draw_count; ++d) {
+    const services::adsb::Aircraft& plane = planes[items[d].index];
+    radar_geo::TagSpot spots[radar_geo::kTagSpotCount];
+    radar_geo::tagSpots(items[d].x, items[d].y, measureTagBlockWidth(plane), tagBlockHeight(plane),
+                        symbol_half, radar::kAircraftLabelGapPx, radar::kSize,
+                        items[d].x < radar::kCenterX, spots);
+    drawAircraftTag(plane, spots[picks[d]]);
   }
 }
 
@@ -491,10 +547,7 @@ void drawAircraft() {
                     planes[i].gs_knots, radar::kColorTrackVector);
     drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
   }
-  for (size_t d = 0; d < draw_count; ++d) {
-    const size_t i = items[d].index;
-    drawAircraftTag(items[d].x, items[d].y, planes[i]);
-  }
+  drawAircraftTags(planes, items, draw_count);
 }
 
 void applyCardinalStyle() {
