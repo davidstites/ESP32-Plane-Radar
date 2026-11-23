@@ -4,6 +4,12 @@
 
 namespace radar_geo {
 
+const char* airportDisplayIdent(const char* icao) {
+  const bool four_letters_with_k =
+      icao[0] == 'K' && icao[1] != '\0' && icao[2] != '\0' && icao[3] != '\0' && icao[4] == '\0';
+  return four_letters_with_k ? icao + 1 : icao;
+}
+
 bool sameView(const ViewKey& a, const ViewKey& b) {
   return a.center_lat == b.center_lat && a.center_lon == b.center_lon &&
          a.range_index == b.range_index;

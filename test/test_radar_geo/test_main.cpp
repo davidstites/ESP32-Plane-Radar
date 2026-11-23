@@ -164,3 +164,13 @@ TEST(RadarGeoTest, SameViewComparesCenterAndRange) {
   EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.1, 1}));
   EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.0, 2}));
 }
+
+TEST(RadarGeoTest, AirportDisplayIdentDropsLeadingKFromFourLetterCodes) {
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("KSJC"), "SJC");
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("KE16"), "E16");
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("RKSI"), "RKSI");
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("EGLL"), "EGLL");
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("KSJ"), "KSJ");
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("K"), "K");
+  EXPECT_STREQ(radar_geo::airportDisplayIdent("KABCD"), "KABCD");
+}

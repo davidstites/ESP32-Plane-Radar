@@ -25,6 +25,12 @@ struct ScreenPoint {
   int y;
 };
 
+/**
+ * ICAO code as shown on screen: a leading K (contiguous US) is dropped from 4-letter codes,
+ * so KSJC reads SJC and KE16 reads E16. Other codes are returned unchanged. Points into icao.
+ */
+const char* airportDisplayIdent(const char* icao);
+
 /** What the projection depends on: a layer drawn from it stays valid while the key is equal. */
 struct ViewKey {
   double center_lat;
