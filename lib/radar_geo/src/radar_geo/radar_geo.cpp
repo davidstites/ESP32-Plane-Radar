@@ -4,6 +4,11 @@
 
 namespace radar_geo {
 
+bool sameView(const ViewKey& a, const ViewKey& b) {
+  return a.center_lat == b.center_lat && a.center_lon == b.center_lon &&
+         a.range_index == b.range_index;
+}
+
 OffsetKm offsetKm(double center_lat, double center_lon, float lat, float lon) {
   // Longitude degrees shrink toward the poles; scale by cos(latitude) so
   // east-west distance isn't overstated away from the equator.

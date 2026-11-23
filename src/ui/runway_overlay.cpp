@@ -2,11 +2,15 @@
 
 #include <lgfx/v1/lgfx_fonts.hpp>
 
+#include <radar_geo/radar_geo.h>
+
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 
 #include "data/large_airports.h"
 #include "hardware/display_font.h"
+#include "services/radar_location.h"
 #include "ui/radar_projection.h"
 #include "ui/radar_range.h"
 #include "ui/radar_theme.h"
@@ -18,6 +22,27 @@ constexpr size_t kMaxAirportLabels = 32;
 
 bool s_in_range[data::large_airports::kAirportCount];
 bool s_label_pending[data::large_airports::kAirportCount];
+
+// The runways and labels in range only change with the center or the range preset,
+// so they are projected once and replayed every frame instead of rescanning the dataset.
+struct CachedRunway {
+  int16_t x0, y0, x1, y1;
+};
+
+struct CachedLabel {
+  const char* ident;
+  int16_t x, y;
+};
+
+/** Runways beyond this many in the view are not drawn. */
+constexpr size_t kMaxCachedRunways = 128;
+
+CachedRunway s_cached_runways[kMaxCachedRunways];
+size_t s_cached_runway_count = 0;
+CachedLabel s_cached_labels[kMaxAirportLabels];
+size_t s_cached_label_count = 0;
+radar_geo::ViewKey s_cached_view = {};
+bool s_cache_valid = false;
 
 bool s_runway_label_ready = false;
 bool s_runway_label_use_vlw = false;
@@ -97,7 +122,7 @@ void drawBoldRunwayLabel(lgfx::LGFXBase& gfx, const char* ident, int mx, int my)
   gfx.drawString(ident, mx, my);
 }
 
-bool drawRunwayLine(lgfx::LGFXBase& gfx, const data::large_airports::Runway& rw) {
+bool projectRunway(const data::large_airports::Runway& rw, CachedRunway* out) {
   const float le_lat = e7ToDeg(rw.le_lat_e7);
   const float le_lon = e7ToDeg(rw.le_lon_e7);
   const float he_lat = e7ToDeg(rw.he_lat_e7);
@@ -117,8 +142,8 @@ bool drawRunwayLine(lgfx::LGFXBase& gfx, const data::large_airports::Runway& rw)
   radar::clipPointToOuterRing(x0, y0, &x1, &y1);
   radar::clipPointToOuterRing(x1, y1, &x0, &y0);
 
-  gfx.drawWideLine(x0, y0, x1, y1, radar::kRunwayLineHalfWidth,
-                   radar::kColorRunway);
+  *out = {static_cast<int16_t>(x0), static_cast<int16_t>(y0), static_cast<int16_t>(x1),
+          static_cast<int16_t>(y1)};
   return true;
 }
 
@@ -152,8 +177,7 @@ void clipPointOntoOuterRing(int* x, int* y) {
   *y = cy + static_cast<int>(lroundf(static_cast<float>(dy) * scale));
 }
 
-void drawAirportLabel(lgfx::LGFXBase& gfx,
-                      const data::large_airports::Airport& ap) {
+void cacheAirportLabel(const data::large_airports::Airport& ap) {
   int ax = 0;
   int ay = 0;
   radar::latLonToScreen(e7ToDeg(ap.lat_e7), e7ToDeg(ap.lon_e7), &ax, &ay);
@@ -162,21 +186,19 @@ void drawAirportLabel(lgfx::LGFXBase& gfx,
   int lx = 0;
   int ly = 0;
   offsetLabelFromCenter(ax, ay, &lx, &ly);
-  drawBoldRunwayLabel(gfx, ap.ident, lx, ly);
+  s_cached_labels[s_cached_label_count++] = {ap.ident, static_cast<int16_t>(lx),
+                                             static_cast<int16_t>(ly)};
 }
 
-}  // namespace
+radar_geo::ViewKey currentView() {
+  return {services::location::lat(), services::location::lon(), radar::rangeIndex()};
+}
 
-void drawLargeAirportRunways(lgfx::LGFXBase& gfx) {
-  if (!radar::showRunways()) {
-    return;
-  }
-  displayFontEnsureLoaded(gfx);
+void rebuildCache(const radar_geo::ViewKey& view) {
   const float radius_km = radar::fetchRadiusKm();
 
-  uint16_t label_airports[kMaxAirportLabels];
-  size_t label_count = 0;
-
+  s_cached_runway_count = 0;
+  s_cached_label_count = 0;
   for (size_t i = 0; i < data::large_airports::kAirportCount; ++i) {
     s_in_range[i] = false;
     s_label_pending[i] = false;
@@ -197,23 +219,51 @@ void drawLargeAirportRunways(lgfx::LGFXBase& gfx) {
     if (!s_in_range[ap_idx]) {
       continue;
     }
-    if (!drawRunwayLine(gfx, rw)) {
+    CachedRunway line;
+    if (!projectRunway(rw, &line)) {
       continue;
     }
-    if (!s_label_pending[ap_idx] && label_count < kMaxAirportLabels) {
+    if (s_cached_runway_count < kMaxCachedRunways) {
+      s_cached_runways[s_cached_runway_count++] = line;
+    }
+    if (!s_label_pending[ap_idx] && s_cached_label_count < kMaxAirportLabels) {
       s_label_pending[ap_idx] = true;
-      label_airports[label_count++] = ap_idx;
+      cacheAirportLabel(data::large_airports::kAirports[ap_idx]);
     }
   }
 
-  if (label_count == 0) {
+  s_cached_view = view;
+  s_cache_valid = true;
+}
+
+}  // namespace
+
+void drawLargeAirportRunways(lgfx::LGFXBase& gfx) {
+  if (!radar::showRunways()) {
+    return;
+  }
+  displayFontEnsureLoaded(gfx);
+
+  const radar_geo::ViewKey view = currentView();
+  if (!s_cache_valid || !radar_geo::sameView(view, s_cached_view)) {
+    rebuildCache(view);
+  }
+
+  for (size_t i = 0; i < s_cached_runway_count; ++i) {
+    const CachedRunway& rw = s_cached_runways[i];
+    gfx.drawWideLine(rw.x0, rw.y0, rw.x1, rw.y1, radar::kRunwayLineHalfWidth,
+                     radar::kColorRunway);
+  }
+
+  if (s_cached_label_count == 0) {
     return;
   }
 
   initRunwayLabelStyle(gfx);
   applyRunwayLabelStyle(gfx);
-  for (size_t i = 0; i < label_count; ++i) {
-    drawAirportLabel(gfx, data::large_airports::kAirports[label_airports[i]]);
+  for (size_t i = 0; i < s_cached_label_count; ++i) {
+    drawBoldRunwayLabel(gfx, s_cached_labels[i].ident, s_cached_labels[i].x,
+                        s_cached_labels[i].y);
   }
 }
 
