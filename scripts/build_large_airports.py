@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Build runway dataset from OurAirports (large_airport only)."""
+"""Build runway dataset from OurAirports.
+
+Airports of type large, medium or small that have at least one paved runway of
+MIN_RUNWAY_FT or longer; only those runways are kept.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +24,12 @@ RUNWAYS_URL = (
     "https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/"
     "runways.csv"
 )
+
+AIRPORT_TYPES = {"large_airport", "medium_airport", "small_airport"}
+MIN_RUNWAY_FT = 3000
+PAVED_SURFACES = ("ASP", "CON", "BIT", "PEM", "PAVED")
+MAX_IDENT_LEN = 4  # Airport.ident is char[5]
+
 
 def fetch_csv(url: str) -> list[dict[str, str]]:
     with urllib.request.urlopen(url, timeout=60) as resp:
@@ -58,6 +68,11 @@ def is_helipad(row: dict[str, str]) -> bool:
     return length_ft < 2500
 
 
+def is_paved(row: dict[str, str]) -> bool:
+    surface = (row.get("surface") or "").upper()
+    return any(token in surface for token in PAVED_SURFACES)
+
+
 def build_dataset() -> tuple[
     list[tuple[str, int, int]],
     list[tuple[int, int, int, int, int, int]],
@@ -65,38 +80,33 @@ def build_dataset() -> tuple[
     airports = fetch_csv(AIRPORTS_URL)
     runways = fetch_csv(RUNWAYS_URL)
 
-    large_idents: dict[str, tuple[int, int]] = {}
+    candidates: dict[str, tuple[int, int]] = {}
     for a in airports:
-        if a.get("type") != "large_airport":
+        if a.get("type") not in AIRPORT_TYPES:
             continue
         ident = (a.get("ident") or "").strip()
-        if len(ident) != 4:
+        if not 0 < len(ident) <= MAX_IDENT_LEN:
             continue
         lat = coord_e7(a.get("latitude_deg"))
         lon = coord_e7(a.get("longitude_deg"))
         if lat is None or lon is None:
             continue
-        large_idents[ident] = (lat, lon)
+        candidates[ident] = (lat, lon)
 
-    airport_rows = sorted(
-        (ident, lat, lon) for ident, (lat, lon) in large_idents.items()
-    )
-    airport_index = {ident: idx for idx, (ident, _, _) in enumerate(airport_rows)}
-
-    segments: list[tuple[int, int, int, int, int, int]] = []
+    kept: dict[str, list[tuple[int, int, int, int, int]]] = {}
     for r in runways:
         if r.get("closed") == "1":
             continue
         airport = (r.get("airport_ident") or "").strip()
-        if airport not in airport_index:
+        if airport not in candidates:
             continue
-        if is_helipad(r):
+        if is_helipad(r) or not is_paved(r):
             continue
         try:
             length_ft = int(r.get("length_ft") or 0)
         except ValueError:
             continue
-        if length_ft <= 0:
+        if length_ft < MIN_RUNWAY_FT:
             continue
         le_lat = coord_e7(r.get("le_latitude_deg"))
         le_lon = coord_e7(r.get("le_longitude_deg"))
@@ -105,16 +115,20 @@ def build_dataset() -> tuple[
         if None in (le_lat, le_lon, he_lat, he_lon):
             continue
         length_m = int(round(length_ft * 0.3048))
-        segments.append(
-            (
-                airport_index[airport],
-                le_lat,
-                le_lon,
-                he_lat,
-                he_lon,
-                length_m,
+        kept.setdefault(airport, []).append((le_lat, le_lon, he_lat, he_lon, length_m))
+
+    # Airports without a drawable runway would never be drawn, so leave them out.
+    airport_rows = sorted(
+        (ident, lat, lon) for ident, (lat, lon) in candidates.items() if ident in kept
+    )
+    airport_index = {ident: idx for idx, (ident, _, _) in enumerate(airport_rows)}
+
+    segments: list[tuple[int, int, int, int, int, int]] = []
+    for ident, rows in kept.items():
+        for le_lat, le_lon, he_lat, he_lon, length_m in rows:
+            segments.append(
+                (airport_index[ident], le_lat, le_lon, he_lat, he_lon, length_m)
             )
-        )
 
     segments.sort(key=lambda row: (row[0], -row[5]))
     return airport_rows, segments
