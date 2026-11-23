@@ -217,7 +217,10 @@ void eraseWifiCredentials() {
   s_wm.resetSettings();
   s_wm.erase();
   WiFi.disconnect(true, true);
-  WiFi.persistent(false);
+  // Leave persistence on: the core picks flash or RAM storage when Wi-Fi next initialises
+  // (from this flag), so turning it off here made the portal's Wi-Fi RAM-only and the
+  // credentials entered after a reset were lost on reboot.
+  WiFi.persistent(true);
 
   WiFi.mode(WIFI_OFF);
   delay(100);
