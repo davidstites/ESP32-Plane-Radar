@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "description": "Arduino-free setup token, URL, coordinate parsing and /location request checking",
   "platforms": "*",
-  "frameworks": "*"
+  "frameworks": "*",
+  "dependencies": {
+    "ricmoo/QRCode": "^0.0.1"
+  }
 }

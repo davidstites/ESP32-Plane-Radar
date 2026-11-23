@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <string>
 
 #include "setup_link/setup_link.h"
 
 using setup_link::buildSetupUrl;
+using setup_link::encodeQr;
+using setup_link::QrCode;
 using setup_link::handleLocationRequest;
 using setup_link::kTokenLen;
 using setup_link::LocationResult;
@@ -178,6 +181,57 @@ TEST_F(HandleLocationTest, ReportsSaveFailure) {
                                   fakeSave),
             LocationResult::kSaveFailed);
   EXPECT_EQ(g_save_calls, 1);
+}
+
+TEST(QrTest, EncodesShortTextAtVersion1) {
+  QrCode qr;
+  ASSERT_TRUE(encodeQr("HI", &qr));
+  EXPECT_EQ(qr.size, 21);
+}
+
+TEST(QrTest, SelectsLargerVersionForLongerText) {
+  QrCode qr;
+  ASSERT_TRUE(encodeQr("https://metarly.app/setup?device=192.168.1.50&token=ABCDEF", &qr));
+  EXPECT_EQ(qr.size, 33);
+}
+
+TEST(QrTest, AcceptsLongestSupportedPayload) {
+  QrCode qr;
+  const std::string longest(106, 'a');
+  ASSERT_TRUE(encodeQr(longest.c_str(), &qr));
+  EXPECT_EQ(qr.size, 37);
+}
+
+TEST(QrTest, FinderPatternCorners) {
+  QrCode qr;
+  ASSERT_TRUE(encodeQr("HI", &qr));
+  EXPECT_TRUE(qr.module(0, 0));
+  EXPECT_TRUE(qr.module(6, 0));
+  EXPECT_TRUE(qr.module(0, 6));
+  EXPECT_TRUE(qr.module(qr.size - 1, 0));
+  EXPECT_TRUE(qr.module(0, qr.size - 1));
+  EXPECT_FALSE(qr.module(7, 7));
+  EXPECT_FALSE(qr.module(1, 1));
+}
+
+TEST(QrTest, RejectsTooLongNullAndEmpty) {
+  QrCode qr;
+  const std::string too_long(200, 'a');
+  EXPECT_FALSE(encodeQr(too_long.c_str(), &qr));
+  EXPECT_EQ(qr.size, 0);
+  EXPECT_FALSE(encodeQr(nullptr, &qr));
+  EXPECT_EQ(qr.size, 0);
+  EXPECT_FALSE(encodeQr("", &qr));
+  EXPECT_EQ(qr.size, 0);
+}
+
+TEST(QrTest, ModuleOutOfRangeIsLight) {
+  QrCode qr;
+  EXPECT_FALSE(qr.module(0, 0));
+  ASSERT_TRUE(encodeQr("HI", &qr));
+  EXPECT_FALSE(qr.module(qr.size, 0));
+  EXPECT_FALSE(qr.module(0, qr.size));
+  EXPECT_FALSE(qr.module(255, 255));
 }
 
 int main(int argc, char** argv) {

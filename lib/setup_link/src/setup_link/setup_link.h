@@ -32,4 +32,20 @@ LocationResult handleLocationRequest(const char* expected_token, const char* tok
                                      const char* lat_text, const char* lon_text,
                                      SaveFn save);
 
+/** Largest QR version encodeQr tries: 37x37 modules, 106 bytes at the lowest ECC level. */
+constexpr uint8_t kQrMaxVersion = 5;
+constexpr uint8_t kQrMaxSize = 4 * kQrMaxVersion + 17;
+
+/** A QR symbol with fixed storage (no heap); modules are packed row by row. */
+struct QrCode {
+  uint8_t size = 0;
+  uint8_t data[(kQrMaxSize * kQrMaxSize + 7) / 8] = {};
+
+  /** True for a dark module; false for light or out-of-range coordinates. */
+  bool module(uint8_t x, uint8_t y) const;
+};
+
+/** Encodes `text` at the smallest version that fits; false (size 0) if null, empty or too long. */
+bool encodeQr(const char* text, QrCode* out);
+
 }  // namespace setup_link

@@ -5,12 +5,17 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <qrcode.h>
+
 namespace setup_link {
 
 namespace {
 
 constexpr char kAlphabet[] = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 constexpr uint32_t kAlphabetLen = sizeof(kAlphabet) - 1;
+
+/** Byte-mode capacity at ECC low, versions 1..kQrMaxVersion. QRCode does not bounds-check. */
+constexpr size_t kQrByteCapacity[kQrMaxVersion] = {17, 32, 53, 78, 106};
 
 bool parseCoord(const char* text, double* out) {
   if (text == nullptr || text[0] == '\0') {
@@ -93,6 +98,43 @@ LocationResult handleLocationRequest(const char* expected_token, const char* tok
     return LocationResult::kBadCoordinates;
   }
   return save(lat, lon) ? LocationResult::kSaved : LocationResult::kSaveFailed;
+}
+
+bool QrCode::module(uint8_t x, uint8_t y) const {
+  if (x >= size || y >= size) {
+    return false;
+  }
+  const unsigned bit = static_cast<unsigned>(y) * size + x;
+  return (data[bit / 8] >> (bit % 8)) & 1u;
+}
+
+bool encodeQr(const char* text, QrCode* out) {
+  out->size = 0;
+  if (text == nullptr || text[0] == '\0') {
+    return false;
+  }
+  const size_t length = strlen(text);
+  for (uint8_t version = 1; version <= kQrMaxVersion; ++version) {
+    if (length > kQrByteCapacity[version - 1]) {
+      continue;
+    }
+    uint8_t modules[(kQrMaxSize * kQrMaxSize + 7) / 8];
+    ::QRCode qr;
+    // Cannot fail here: the text fits this version and byte mode accepts any text.
+    qrcode_initText(&qr, modules, version, ECC_LOW, text);
+    memset(out->data, 0, sizeof(out->data));
+    for (uint8_t y = 0; y < qr.size; ++y) {
+      for (uint8_t x = 0; x < qr.size; ++x) {
+        if (qrcode_getModule(&qr, x, y)) {
+          const unsigned bit = static_cast<unsigned>(y) * qr.size + x;
+          out->data[bit / 8] |= static_cast<uint8_t>(1u << (bit % 8));
+        }
+      }
+    }
+    out->size = qr.size;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace setup_link
