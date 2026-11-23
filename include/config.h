@@ -50,6 +50,12 @@ constexpr double kDefaultRadarLon = 4.9041;
 
 /** Poll adsb.fi (API public limit: 1 req/s). */
 constexpr unsigned long kAdsbFetchIntervalMs = 5000;
+/** Gap between successful weather-feed refreshes (METAR flight categories, radar). */
+constexpr unsigned long kFeedRefreshIntervalMs = 15UL * 60UL * 1000UL;
+/** Gap before trying the weather feeds again after a failed refresh. */
+constexpr unsigned long kFeedRetryMs = 20UL * 1000UL;
+/** A range or location change must stay unchanged this long before the feeds refetch. */
+constexpr unsigned long kViewSettleMs = 3UL * 1000UL;
 /** Redraw cadence; aircraft are dead-reckoned along their track/speed so motion
  *  is smooth. ~4 Hz = 250 ms (panel scanout caps at ~24 Hz; the full-frame
  *  recompose+present is the practical limit ~10-15 Hz). */
