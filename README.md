@@ -29,11 +29,12 @@ The 3 s hold works any time the firmware is running, including during Wi‑Fi co
 1. Connect to **`PlaneRadar-Setup`**
 2. Open **`http://plane-radar.local`** (preferred) or **`http://192.168.4.1`** — both are shown on the yellow setup screen; captive portal may open automatically
 3. Set home Wi‑Fi, then save
+4. **Set your location**: once the device joins Wi‑Fi it shows a QR code (and `metarly.app/setup`, the device IP and a 6-character code for typing). Scan it, or open the page and enter the IP and code, then search an address or airport (ICAO/IATA), or tap **Use my current location**. The radar appears as soon as a location is saved. There is no skip: the built-in default location is Amsterdam
 
 **Reconfigure anytime** (after the device is on your network):
 
 1. Open **`http://plane-radar.local`** or **`http://<device-ip>`** (e.g. from your router or serial log at boot)
-2. Change Wi‑Fi, location, units, or runway overlay; save
+2. Change Wi‑Fi, units, or runway overlay; save. The **Set location with address search** link at the top of the page reopens the setup page for this device; raw latitude/longitude are under **Advanced**
 
 The same portal runs on the setup AP and on the device’s LAN IP while connected to Wi‑Fi. mDNS hostname is `plane-radar` → **plane-radar.local** (`kPortalHostname` in `config.h`). Some clients resolve `.local` slowly; use the IP if needed.
 
@@ -41,9 +42,11 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 
 | Field | Purpose |
 |-------|---------|
-| **Latitude / Longitude** | Radar center and ADS-B query position (defaults in `config.h` until set) |
+| **Latitude / Longitude** (under *Advanced*) | Radar center and ADS-B query position. Normally set by the hosted setup page; the fields are prefilled with the saved location and are only saved when you change them |
 | **Display distances in miles** | Ring scale label in **mi** instead of **km** (e.g. `6mi` vs `10km`) |
 | **Show airport runways** | Major-airport runway overlay on the radar (off to hide) |
+
+**Location hand-off** (`GET /location?lat=…&lon=…&token=…`): the hosted page navigates your browser to the device with the setup code from the QR screen. A wrong or missing code returns 403, bad coordinates 400, and nothing is saved. The code is random per boot and guards against other websites changing your radar's center; it is not a password, since the portal itself has no login.
 
 After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
 
@@ -115,7 +118,8 @@ Edit **`include/config.h`** for hardware and behavior:
 | Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
 | BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
 | Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
-| Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
+| Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (placeholder, never shown: the QR setup screen appears until a location is saved) |
+| Setup page | `kSetupPageUrl` (encoded in the QR), `kSetupPageShortUrl` (shown as text) |
 | ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
 
 Range presets: `include/ui/radar_range.h` (`kRangePresets`).
@@ -141,6 +145,8 @@ include/
   services/
     wifi_setup.h
     radar_location.h
+    setup_session.h
+    portal_style.h
     adsb_client.h
 data/
   ui_font.vlw              — embedded smooth UI font (Noto Sans Bold)
@@ -150,6 +156,7 @@ lib/
   adsb_parse/              — Arduino-free HTTP body decoding + aircraft parsing (unit tested)
   button_logic/            — Arduino-free tap / long-press timing for the BOOT button (unit tested)
   radar_geo/               — Arduino-free lat/lon → km offsets and screen projection (unit tested)
+  setup_link/              — Arduino-free setup code, setup URL, coordinate parsing, /location request check and QR encoding (unit tested)
 scripts/
   build_large_airports.py
   coverage.sh              — host unit tests + coverage gate
