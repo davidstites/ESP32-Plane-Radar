@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "radar_geo/label_spots.h"
 #include "radar_geo/radar_geo.h"
 
 using radar_geo::clipToDisc;
@@ -185,6 +186,186 @@ TEST(RadarGeoTest, SegmentMissingARectDoesNotIntersectIt) {
   EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 25, 8, 40, box));   // diagonal, away
   EXPECT_FALSE(radar_geo::segmentIntersectsRect(40, 5, 45, 5, box));   // a point outside
   EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 55, 55, 0, box));   // diagonal past the corner
+}
+
+namespace {
+
+using radar_geo::Rect;
+using radar_geo::TagSpot;
+
+// Three clear spots in a row, far apart.
+const Rect kRow[] = {{0, 0, 10, 10}, {20, 0, 10, 10}, {40, 0, 10, 10}};
+
+}  // namespace
+
+TEST(LabelSpotsTest, PicksTheFirstFreeSpotInOrder) {
+  const Rect avoid[] = {{0, 0, 10, 10}};  // blocks spot 0
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, -1, avoid, 1, nullptr, 0), 1);
+}
+
+TEST(LabelSpotsTest, PrefersTheRememberedSpotWhileItIsFree) {
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, 2, nullptr, 0, nullptr, 0), 2);
+}
+
+TEST(LabelSpotsTest, MovesOffARememberedSpotThatIsNoLongerFree) {
+  const Rect avoid[] = {{40, 0, 10, 10}};  // blocks the remembered spot 2
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, 2, avoid, 1, nullptr, 0), 0);
+}
+
+TEST(LabelSpotsTest, IgnoresAnInvalidRememberedSpot) {
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, -1, nullptr, 0, nullptr, 0), 0);
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, 3, nullptr, 0, nullptr, 0), 0);
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, 99, nullptr, 0, nullptr, 0), 0);
+}
+
+TEST(LabelSpotsTest, PrefersSpotsClearOfSymbolsToo) {
+  const Rect symbols[] = {{0, 0, 10, 10}, {20, 0, 10, 10}};  // sit on spots 0 and 1
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, -1, nullptr, 0, symbols, 2), 2);
+}
+
+TEST(LabelSpotsTest, FallsBackToCoveringASymbolRatherThanALabel) {
+  const Rect symbols[] = {{0, 0, 10, 10}, {20, 0, 10, 10}, {40, 0, 10, 10}};  // all spots
+  const Rect avoid[] = {{0, 0, 10, 10}};                                      // label on spot 0
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, -1, avoid, 1, symbols, 3), 1);
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, 2, avoid, 1, symbols, 3), 2);
+}
+
+TEST(LabelSpotsTest, ReportsMinusOneWhenEverySpotHitsALabel) {
+  const Rect avoid[] = {{0, 0, 50, 10}};
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 3, -1, avoid, 1, nullptr, 0), -1);
+  EXPECT_EQ(radar_geo::pickClearSpot(kRow, 0, -1, nullptr, 0, nullptr, 0), -1);
+}
+
+TEST(LabelSpotsTest, TagSpotsStartBesideTheSymbolFacingTheCenter) {
+  TagSpot spots[radar_geo::kTagSpotCount];
+  radar_geo::tagSpots(60, 120, 50, 42, 12, 1, 240, true, spots);
+  EXPECT_EQ(spots[0].rect.x, 73);  // symbol x + half + gap
+  EXPECT_EQ(spots[0].rect.y, 99);  // vertically centered on the symbol
+  EXPECT_EQ(spots[0].rect.w, 50);
+  EXPECT_EQ(spots[0].rect.h, 42);
+  EXPECT_FALSE(spots[0].right_aligned);
+  EXPECT_EQ(spots[1].rect.x, 1);   // other side, clamped on screen
+  EXPECT_TRUE(spots[1].right_aligned);
+}
+
+TEST(LabelSpotsTest, TagSpotsMirrorWhenTheCenterIsOnTheLeft) {
+  TagSpot spots[radar_geo::kTagSpotCount];
+  radar_geo::tagSpots(180, 120, 50, 42, 12, 1, 240, false, spots);
+  EXPECT_EQ(spots[0].rect.x, 117);  // 180 - 12 - 1 - 50
+  EXPECT_TRUE(spots[0].right_aligned);
+  EXPECT_EQ(spots[1].rect.x, 189);  // 180 + 12 + 1 = 193, clamped to stay on screen
+  EXPECT_FALSE(spots[1].right_aligned);
+}
+
+TEST(LabelSpotsTest, TagSpotsShiftAboveAndBelowToo) {
+  TagSpot spots[radar_geo::kTagSpotCount];
+  radar_geo::tagSpots(120, 120, 50, 42, 12, 1, 240, true, spots);
+  EXPECT_EQ(spots[2].rect.y, 99 - 21);  // default side, up half a block
+  EXPECT_EQ(spots[3].rect.y, 99 + 21);  // default side, down
+  EXPECT_EQ(spots[4].rect.y, 99 - 21);  // other side, up
+  EXPECT_EQ(spots[5].rect.y, 99 + 21);  // other side, down
+  EXPECT_EQ(spots[6].rect.x, 95);       // centered above...
+  EXPECT_EQ(spots[6].rect.y, 120 - 12 - 1 - 42);
+  EXPECT_EQ(spots[7].rect.y, 120 + 12 + 1);  // ...and below
+  EXPECT_FALSE(spots[6].right_aligned);
+}
+
+TEST(LabelSpotsTest, TagSpotsStayOnScreen) {
+  TagSpot spots[radar_geo::kTagSpotCount];
+  radar_geo::tagSpots(235, 238, 50, 42, 12, 1, 240, false, spots);
+  for (const TagSpot& s : spots) {
+    EXPECT_GE(s.rect.x, 1);
+    EXPECT_GE(s.rect.y, 1);
+    EXPECT_LE(s.rect.x + s.rect.w, 239);
+    EXPECT_LE(s.rect.y + s.rect.h, 239);
+  }
+}
+
+TEST(LabelSpotsTest, TagSpotsHandleABlockBiggerThanTheScreen) {
+  TagSpot spots[radar_geo::kTagSpotCount];
+  radar_geo::tagSpots(10, 10, 300, 300, 12, 1, 240, true, spots);
+  EXPECT_EQ(spots[0].rect.x, 1);
+  EXPECT_EQ(spots[0].rect.y, 1);
+}
+
+TEST(LabelSpotsTest, ThreeNearbyAircraftGetNonOverlappingTags) {
+  // Nearest the center first, as the display does; symbols are 16 px squares.
+  const int px[3] = {100, 112, 104};
+  const int py[3] = {100, 104, 118};
+  Rect symbols[3];
+  for (int i = 0; i < 3; ++i) {
+    symbols[i] = {px[i] - 8, py[i] - 8, 16, 16};
+  }
+  Rect placed[3];
+  for (size_t i = 0; i < 3; ++i) {
+    TagSpot spots[radar_geo::kTagSpotCount];
+    radar_geo::tagSpots(px[i], py[i], 50, 42, 12, 1, 240, true, spots);
+    Rect rects[radar_geo::kTagSpotCount];
+    for (size_t k = 0; k < radar_geo::kTagSpotCount; ++k) {
+      rects[k] = spots[k].rect;
+    }
+    const int pick = radar_geo::pickClearSpot(rects, radar_geo::kTagSpotCount, -1, placed, i,
+                                              symbols, 3);
+    ASSERT_GE(pick, 0) << "aircraft " << i;
+    placed[i] = rects[pick];
+  }
+  EXPECT_FALSE(radar_geo::rectsOverlap(placed[0], placed[1]));
+  EXPECT_FALSE(radar_geo::rectsOverlap(placed[0], placed[2]));
+  EXPECT_FALSE(radar_geo::rectsOverlap(placed[1], placed[2]));
+}
+
+TEST(LabelKeyTest, HashIsStableDistinctAndNeverZero) {
+  EXPECT_EQ(radar_geo::hashLabelKey("UAL123"), radar_geo::hashLabelKey("UAL123"));
+  EXPECT_NE(radar_geo::hashLabelKey("UAL123"), radar_geo::hashLabelKey("UAL124"));
+  EXPECT_NE(radar_geo::hashLabelKey(""), 0u);
+}
+
+TEST(SpotMemoryTest, RemembersAndRefreshesAnAircraftsSpot) {
+  radar_geo::SpotMemory memory;
+  EXPECT_EQ(memory.get(7, 0), -1);
+  memory.set(7, 3, 0);
+  EXPECT_EQ(memory.get(7, 1), 3);
+  memory.set(7, 5, 2);  // same aircraft: updated in place
+  EXPECT_EQ(memory.get(7, 3), 5);
+}
+
+TEST(SpotMemoryTest, ZeroKeyIsNeverStored) {
+  radar_geo::SpotMemory memory;
+  memory.set(0, 4, 0);
+  EXPECT_EQ(memory.get(0, 0), -1);
+}
+
+TEST(SpotMemoryTest, ForgetsAnAircraftNotSeenForAWhile) {
+  radar_geo::SpotMemory memory;
+  memory.set(7, 3, 100);
+  EXPECT_EQ(memory.get(7, 100 + radar_geo::SpotMemory::kExpireFrames - 1), 3);
+  EXPECT_EQ(memory.get(7, 100 + radar_geo::SpotMemory::kExpireFrames), -1);
+}
+
+TEST(SpotMemoryTest, ReusesAnExpiredSlotBeforeEvictingALiveOne) {
+  radar_geo::SpotMemory memory;
+  for (uint32_t k = 1; k <= radar_geo::SpotMemory::kCapacity; ++k) {
+    memory.set(k, static_cast<int>(k % 8), 0);
+  }
+  const uint32_t later = radar_geo::SpotMemory::kExpireFrames + 5;
+  memory.set(1000, 2, later);  // every old entry has expired: any slot is free
+  EXPECT_EQ(memory.get(1000, later), 2);
+}
+
+TEST(SpotMemoryTest, EvictsTheOldestWhenFull) {
+  radar_geo::SpotMemory memory;
+  memory.set(37, 1, 3);  // seen longest ago; frames only move forward, so it goes in first
+  for (uint32_t k = 1; k <= radar_geo::SpotMemory::kCapacity; ++k) {
+    if (k != 37) {
+      memory.set(k, 1, 10);
+    }
+  }
+  const uint32_t now = 20;  // nobody has expired yet
+  memory.set(1000, 6, now);
+  EXPECT_EQ(memory.get(1000, now), 6);
+  EXPECT_EQ(memory.get(37, now), -1);  // evicted: the oldest, not merely the first
+  EXPECT_EQ(memory.get(1, now), 1);    // everything else kept
+  EXPECT_EQ(memory.get(64, now), 1);
 }
 
 int main(int argc, char** argv) {

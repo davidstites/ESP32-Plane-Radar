@@ -81,6 +81,7 @@ Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
 - **Inside the outer ring** — red heading triangle, magenta speed vector (clipped at the ring), callsign / type / altitude tags
 - **Outside the ring** (still within ADS-B fetch) — small **red dot on the screen rim** at the correct bearing (direction cue; not distance-accurate past the ring)
 - **Tags** — placed toward the **center**: west (left) → tag on the **right** of the symbol; east (right) → tag on the **left**
+- **Tag spacing** — each tag prefers that spot but moves (other side, shifted up/down, above/below) to avoid covering another tag or aircraft, nearest-to-center aircraft first; a tag keeps its spot while it stays free. In a crowd at a wide range some overlap is unavoidable, and the nearer aircraft's tag is drawn on top
 
 As range decreases (or aircraft approach), targets move inward; beyond-ring dots become full symbols when they cross the outer ring.
 
