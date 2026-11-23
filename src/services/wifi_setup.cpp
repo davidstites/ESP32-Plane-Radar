@@ -16,6 +16,7 @@
 
 #include "config.h"
 #include "hardware/boot_button.h"
+#include "services/portal_style.h"
 #include "services/radar_location.h"
 #include "services/setup_session.h"
 #include "ui/radar_range.h"
@@ -277,6 +278,7 @@ void ensureWifiManager() {
     return;
   }
   s_wm.setWebServerCallback(registerPortalRoutes);
+  s_wm.setCustomHeadElement(services::portal::kPortalHeadHtml);
   s_wm.setConfigPortalTimeout(config::kWifiPortalTimeoutSec);
   s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
                            IPAddress(255, 255, 255, 0));
