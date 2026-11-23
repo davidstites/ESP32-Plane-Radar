@@ -158,11 +158,11 @@ TEST(RadarGeoTest, DeadReckonDistanceRoundTripsThroughOffsetKm) {
 }
 
 TEST(RadarGeoTest, SameViewComparesCenterAndRange) {
-  const radar_geo::ViewKey base = {37.0, -121.0, 1};
-  EXPECT_TRUE(radar_geo::sameView(base, {37.0, -121.0, 1}));
-  EXPECT_FALSE(radar_geo::sameView(base, {37.1, -121.0, 1}));
-  EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.1, 1}));
-  EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.0, 2}));
+  const radar_geo::ViewKey base = {37.0, -121.0, 10.0f};
+  EXPECT_TRUE(radar_geo::sameView(base, {37.0, -121.0, 10.0f}));
+  EXPECT_FALSE(radar_geo::sameView(base, {37.1, -121.0, 10.0f}));
+  EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.1, 10.0f}));
+  EXPECT_FALSE(radar_geo::sameView(base, {37.0, -121.0, 15.0f}));
 }
 
 TEST(RadarGeoTest, AirportDisplayIdentDropsLeadingKFromFourLetterCodes) {
@@ -173,4 +173,50 @@ TEST(RadarGeoTest, AirportDisplayIdentDropsLeadingKFromFourLetterCodes) {
   EXPECT_STREQ(radar_geo::airportDisplayIdent("KSJ"), "KSJ");
   EXPECT_STREQ(radar_geo::airportDisplayIdent("K"), "K");
   EXPECT_STREQ(radar_geo::airportDisplayIdent("KABCD"), "KABCD");
+}
+
+TEST(RadarGeoTest, ParseRingRangeKmConvertsMilesAndKm) {
+  float km = 0.0f;
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("10", false, &km));
+  EXPECT_FLOAT_EQ(km, 10.0f);
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("10", true, &km));
+  EXPECT_NEAR(km, 16.09344f, 1e-4f);
+  ASSERT_TRUE(radar_geo::parseRingRangeKm(" 7.5 ", true, &km));
+  EXPECT_NEAR(km, 7.5f * radar_geo::kKmPerMile, 1e-4f);
+}
+
+TEST(RadarGeoTest, ParseRingRangeKmClampsToOneUnitAndTwentyFiveMiles) {
+  float km = 0.0f;
+  const float max_km = 25.0f * radar_geo::kKmPerMile;
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("25", true, &km));
+  EXPECT_NEAR(km, max_km, 1e-4f);
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("250", true, &km));
+  EXPECT_NEAR(km, max_km, 1e-4f);
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("100", false, &km));
+  EXPECT_NEAR(km, max_km, 1e-4f);
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("0.2", true, &km));
+  EXPECT_NEAR(km, radar_geo::kKmPerMile, 1e-4f);
+  ASSERT_TRUE(radar_geo::parseRingRangeKm("-5", false, &km));
+  EXPECT_FLOAT_EQ(km, 1.0f);
+}
+
+TEST(RadarGeoTest, ParseRingRangeKmRejectsNonNumbers) {
+  float km = 42.0f;
+  EXPECT_FALSE(radar_geo::parseRingRangeKm(nullptr, true, &km));
+  EXPECT_FALSE(radar_geo::parseRingRangeKm("", true, &km));
+  EXPECT_FALSE(radar_geo::parseRingRangeKm("abc", true, &km));
+  EXPECT_FALSE(radar_geo::parseRingRangeKm("12abc", true, &km));
+  EXPECT_FALSE(radar_geo::parseRingRangeKm("nan", true, &km));
+  EXPECT_FALSE(radar_geo::parseRingRangeKm("inf", true, &km));
+  EXPECT_FLOAT_EQ(km, 42.0f);
+}
+
+TEST(RadarGeoTest, NextRingKmStepsToLargerPresetThenWraps) {
+  const float presets[] = {5.0f, 10.0f, 15.0f, 25.0f};
+  EXPECT_FLOAT_EQ(radar_geo::nextRingKm(5.0f, presets, 4), 10.0f);
+  EXPECT_FLOAT_EQ(radar_geo::nextRingKm(12.0f, presets, 4), 15.0f);
+  EXPECT_FLOAT_EQ(radar_geo::nextRingKm(15.0f, presets, 4), 25.0f);
+  EXPECT_FLOAT_EQ(radar_geo::nextRingKm(25.0f, presets, 4), 5.0f);
+  EXPECT_FLOAT_EQ(radar_geo::nextRingKm(33.0f, presets, 4), 5.0f);
+  EXPECT_FLOAT_EQ(radar_geo::nextRingKm(1.0f, presets, 4), 5.0f);
 }

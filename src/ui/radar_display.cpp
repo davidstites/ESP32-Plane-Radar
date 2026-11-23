@@ -138,6 +138,12 @@ void initLabelMetrics() {
       }
     }
   }
+  // A range set in the portal can be wider than any preset, up to 25 mi.
+  for (bool miles : {false, true}) {
+    radar::formatRing3Label(label, sizeof(label), radar_geo::kMaxRingMiles * radar_geo::kKmPerMile,
+                            miles);
+    s_scale_label_max_w = std::max(s_scale_label_max_w, static_cast<int>(tft.textWidth(label)));
+  }
 
   s_label_metrics_ready = true;
 }

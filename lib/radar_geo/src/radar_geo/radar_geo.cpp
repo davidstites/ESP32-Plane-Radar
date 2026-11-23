@@ -1,6 +1,8 @@
 #include "radar_geo/radar_geo.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace radar_geo {
 
@@ -10,9 +12,37 @@ const char* airportDisplayIdent(const char* icao) {
   return four_letters_with_k ? icao + 1 : icao;
 }
 
+bool parseRingRangeKm(const char* text, bool use_miles, float* out_km) {
+  if (text == nullptr) {
+    return false;
+  }
+  char* end = nullptr;
+  const double value = std::strtod(text, &end);
+  while (end != text && *end == ' ') {
+    ++end;
+  }
+  if (end == text || *end != '\0' || !std::isfinite(value)) {
+    return false;
+  }
+  const float unit_km = use_miles ? kKmPerMile : 1.0f;
+  const float max_km = kMaxRingMiles * kKmPerMile;
+  const float km = static_cast<float>(value) * unit_km;
+  *out_km = std::min(std::max(km, unit_km), max_km);
+  return true;
+}
+
+float nextRingKm(float current_km, const float* presets_km, size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    if (presets_km[i] > current_km + 0.01f) {
+      return presets_km[i];
+    }
+  }
+  return presets_km[0];
+}
+
 bool sameView(const ViewKey& a, const ViewKey& b) {
   return a.center_lat == b.center_lat && a.center_lon == b.center_lon &&
-         a.range_index == b.range_index;
+         a.ring3_km == b.ring3_km;
 }
 
 OffsetKm offsetKm(double center_lat, double center_lon, float lat, float lon) {

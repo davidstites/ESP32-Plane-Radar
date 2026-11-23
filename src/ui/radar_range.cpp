@@ -1,5 +1,7 @@
 #include "ui/radar_range.h"
 
+#include <radar_geo/radar_geo.h>
+
 #include "ui/radar_theme.h"
 
 #include <Preferences.h>
@@ -12,22 +14,23 @@ namespace ui::radar {
 namespace {
 
 constexpr char kPrefsNamespace[] = "planeradar";
-constexpr char kPrefsRangeKey[] = "rangeIdx";
+constexpr char kPrefsRangeKey[] = "rangeIdx";  // legacy: preset index
+constexpr char kPrefsRingKmKey[] = "ring3Km";
 constexpr char kPrefsMilesKey[] = "useMiles";
 constexpr char kPrefsRunwaysKey[] = "showRwys";
 constexpr uint8_t kDefaultRangeIndex = 1;  // 10 km ring
-constexpr float kKmPerMile = 1.609344f;
+constexpr float kKmPerMile = radar_geo::kKmPerMile;
 
 Preferences s_prefs;
-uint8_t s_range_index = kDefaultRangeIndex;
+float s_ring3_km = kRangePresets[kDefaultRangeIndex].ring3_km;
 bool s_use_miles = false;
 bool s_show_runways = true;
 
-void saveRangeIndex() {
+void saveRingKm() {
   if (!s_prefs.begin(kPrefsNamespace, false)) {
     return;
   }
-  s_prefs.putUChar(kPrefsRangeKey, s_range_index);
+  s_prefs.putFloat(kPrefsRingKmKey, s_ring3_km);
   s_prefs.end();
 }
 
@@ -65,22 +68,29 @@ void rangeInit() {
   if (!s_prefs.begin(kPrefsNamespace, true)) {
     return;
   }
-  const uint8_t saved = s_prefs.getUChar(kPrefsRangeKey, kDefaultRangeIndex);
-  s_range_index =
-      (saved < kRangePresetCount) ? saved : kDefaultRangeIndex;
+  const float max_km = radar_geo::kMaxRingMiles * kKmPerMile;
+  const float saved_km = s_prefs.getFloat(kPrefsRingKmKey, 0.0f);
+  if (saved_km >= 1.0f && saved_km <= max_km) {
+    s_ring3_km = saved_km;
+  } else {
+    const uint8_t saved = s_prefs.getUChar(kPrefsRangeKey, kDefaultRangeIndex);
+    s_ring3_km = kRangePresets[(saved < kRangePresetCount) ? saved : kDefaultRangeIndex].ring3_km;
+  }
   s_use_miles = s_prefs.getBool(kPrefsMilesKey, false);
   s_show_runways = s_prefs.getBool(kPrefsRunwaysKey, true);
   s_prefs.end();
 }
 
 void rangeNext() {
-  s_range_index = static_cast<uint8_t>((s_range_index + 1) % kRangePresetCount);
-  saveRangeIndex();
+  float presets_km[kRangePresetCount];
+  for (size_t i = 0; i < kRangePresetCount; ++i) {
+    presets_km[i] = kRangePresets[i].ring3_km;
+  }
+  s_ring3_km = radar_geo::nextRingKm(s_ring3_km, presets_km, kRangePresetCount);
+  saveRingKm();
 }
 
-const RangePreset& rangeCurrent() { return kRangePresets[s_range_index]; }
-
-uint8_t rangeIndex() { return s_range_index; }
+RangePreset rangeCurrent() { return {s_ring3_km, s_ring3_km * kRing3ToOuterKm}; }
 
 float fetchRadiusKm() {
   const float outer_km = rangeCurrent().outer_km;
@@ -97,6 +107,23 @@ void saveMilesFromPortal(const char* checkbox_value) {
   s_use_miles = portalCheckboxChecked(checkbox_value);
   saveUseMiles();
   Serial.printf("Distance units: %s\n", s_use_miles ? "miles" : "km");
+}
+
+void saveRangeFromPortal(const char* text) {
+  float km = 0.0f;
+  if (!radar_geo::parseRingRangeKm(text, s_use_miles, &km)) {
+    Serial.println("Invalid range in portal — keeping previous range");
+    return;
+  }
+  s_ring3_km = km;
+  saveRingKm();
+  char label[12];
+  formatCurrentRing3Label(label, sizeof(label));
+  Serial.printf("Range: %s\n", label);
+}
+
+void formatRangeForPortal(char* buf, size_t len) {
+  snprintf(buf, len, "%.1f", s_use_miles ? s_ring3_km / kKmPerMile : s_ring3_km);
 }
 
 void saveRunwaysFromPortal(const char* checkbox_value) {

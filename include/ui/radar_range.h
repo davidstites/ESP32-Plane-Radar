@@ -36,10 +36,10 @@ constexpr size_t kRangePresetCount =
 
 /** Load saved range and distance units from flash. Call once after boot. */
 void rangeInit();
-/** Cycle preset and save to flash. */
+/** Step to the next larger preset (wrapping to the smallest) and save to flash. */
 void rangeNext();
-const RangePreset& rangeCurrent();
-uint8_t rangeIndex();
+/** The current range: a preset, or the value set in the WiFi portal. */
+RangePreset rangeCurrent();
 /** ADSB fetch radius (km): scaled to screen edge so beyond-ring dots have data. */
 float fetchRadiusKm();
 
@@ -47,6 +47,13 @@ bool useMiles();
 bool showRunways();
 /** WiFi portal checkbox: "T" = miles, otherwise km. */
 void saveMilesFromPortal(const char* checkbox_value);
+/**
+ * WiFi portal range field, in the units chosen by the miles checkbox (save that first).
+ * Clamped to 25 mi; ignored if not a number.
+ */
+void saveRangeFromPortal(const char* text);
+/** The current range in the display units, for prefilling the portal field. */
+void formatRangeForPortal(char* buf, size_t len);
 void saveRunwaysFromPortal(const char* checkbox_value);
 void formatRing3Label(char* buf, size_t len, float ring3_km, bool use_miles);
 void formatCurrentRing3Label(char* buf, size_t len);

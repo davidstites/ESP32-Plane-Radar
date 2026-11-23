@@ -186,12 +186,13 @@ void cacheAirportLabel(const data::large_airports::Airport& ap) {
   int lx = 0;
   int ly = 0;
   offsetLabelFromCenter(ax, ay, &lx, &ly);
-  s_cached_labels[s_cached_label_count++] = {radar_geo::airportDisplayIdent(ap.ident), static_cast<int16_t>(lx),
+  s_cached_labels[s_cached_label_count++] = {radar_geo::airportDisplayIdent(ap.ident),
+                                             static_cast<int16_t>(lx),
                                              static_cast<int16_t>(ly)};
 }
 
 radar_geo::ViewKey currentView() {
-  return {services::location::lat(), services::location::lon(), radar::rangeIndex()};
+  return {services::location::lat(), services::location::lon(), radar::rangeCurrent().ring3_km};
 }
 
 void rebuildCache(const radar_geo::ViewKey& view) {
