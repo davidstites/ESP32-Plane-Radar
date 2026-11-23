@@ -153,6 +153,40 @@ TEST(RadarGeoTest, FirstClearCandidateReportsMinusOneWhenAllCollide) {
   EXPECT_EQ(radar_geo::firstClearCandidate(candidates, 0, placed, 1), -1);
 }
 
+TEST(RadarGeoTest, SegmentCrossingARectIntersectsIt) {
+  const radar_geo::Rect box = {10, 10, 20, 10};
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(0, 15, 40, 15, box));   // straight through
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(20, 0, 20, 30, box));   // vertical through
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(0, 0, 40, 30, box));    // diagonal through
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(40, 15, 0, 15, box));   // either direction
+}
+
+TEST(RadarGeoTest, SegmentEndingInsideARectIntersectsIt) {
+  const radar_geo::Rect box = {10, 10, 20, 10};
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(0, 15, 15, 15, box));   // ends inside
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(15, 12, 25, 18, box));  // entirely inside
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(20, 15, 20, 15, box));  // a point inside
+}
+
+TEST(RadarGeoTest, SegmentTouchingAnEdgeOrCornerCounts) {
+  const radar_geo::Rect box = {10, 10, 20, 10};
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(0, 10, 40, 10, box));   // along the top edge
+  EXPECT_TRUE(radar_geo::segmentIntersectsRect(0, 0, 10, 10, box));    // ends on the corner
+}
+
+TEST(RadarGeoTest, SegmentMissingARectDoesNotIntersectIt) {
+  const radar_geo::Rect box = {10, 10, 20, 10};
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 5, 40, 5, box));    // parallel, above
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 25, 40, 25, box));  // parallel, below
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(5, 0, 5, 30, box));    // vertical, left
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(35, 0, 35, 30, box));  // vertical, right
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 15, 8, 15, box));   // stops short
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(32, 15, 50, 15, box)); // starts past it
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 25, 8, 40, box));   // diagonal, away
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(40, 5, 45, 5, box));   // a point outside
+  EXPECT_FALSE(radar_geo::segmentIntersectsRect(0, 55, 55, 0, box));   // diagonal past the corner
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

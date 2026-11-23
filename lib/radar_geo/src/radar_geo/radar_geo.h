@@ -89,6 +89,12 @@ struct Rect {
 bool rectsOverlap(const Rect& a, const Rect& b);
 
 /**
+ * True when the segment (x0, y0)-(x1, y1) touches the rectangle, edges included. Callers
+ * widen the rectangle by half the line width to test a thick line.
+ */
+bool segmentIntersectsRect(int x0, int y0, int x1, int y1, const Rect& rect);
+
+/**
  * Index of the first candidate that overlaps none of the placed rectangles, or -1 if
  * every candidate collides. Candidates are tried in order, so put the preferred one first.
  */

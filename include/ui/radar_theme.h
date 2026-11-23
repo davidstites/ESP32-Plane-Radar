@@ -89,9 +89,12 @@ constexpr uint8_t kRunwayLabelR = 110;
 constexpr uint8_t kRunwayLabelG = 210;
 constexpr uint8_t kRunwayLabelB = 230;
 
-/** Dot beside an airport label for its METAR flight category: radius, and the label width it reserves. */
+/**
+ * Dot beside an airport label for its METAR flight category: radius, and the width it
+ * reserves left of the label (the dot, then a 5 px gap before the text).
+ */
 constexpr int kRunwayLabelDotRadiusPx = 2;
-constexpr int kRunwayLabelDotSlotPx = 7;
+constexpr int kRunwayLabelDotSlotPx = 9;
 /** Flight category colors as seen on screen (VFR green, MVFR blue, IFR red, LIFR magenta). */
 constexpr uint8_t kFcVfrR = 0;
 constexpr uint8_t kFcVfrG = 220;
