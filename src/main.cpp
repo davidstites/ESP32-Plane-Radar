@@ -9,6 +9,7 @@
 #include "hardware/boot_button.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
+#include "services/net_worker.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
@@ -55,21 +56,6 @@ void onBootLongPress() {
   wifiResetCredentialsAndReboot();
 }
 
-// ADS-B fetch runs on its own task: the HTTPS request blocks for ~1-2 s, and
-// keeping it off the main loop lets the radar keep redrawing (dead-reckoned) at
-// 4 Hz throughout. The task publishes into the shared aircraft buffer under a
-// lock; the render loop reads a snapshot.
-void adsbFetchTask(void*) {
-  for (;;) {
-    if (WiFi.status() == WL_CONNECTED) {
-      services::adsb::fetchUpdate(services::location::lat(),
-                                  services::location::lon(),
-                                  ui::radar::fetchRadiusKm());
-    }
-    vTaskDelay(pdMS_TO_TICKS(config::kAdsbFetchIntervalMs));
-  }
-}
-
 }  // namespace
 
 void setup() {
@@ -92,9 +78,8 @@ void setup() {
     showRadarIfConnected();
   }
 
-  // Start the background ADS-B fetch (pinned to core 0, away from the render
-  // loop on core 1). It checks Wi-Fi state each cycle.
-  xTaskCreatePinnedToCore(adsbFetchTask, "adsb", 16384, nullptr, 1, nullptr, 0);
+  // Start the background network task (core 0, away from the render loop on core 1).
+  services::net::start();
 }
 
 void loop() {

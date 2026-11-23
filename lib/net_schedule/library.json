@@ -1,0 +1,7 @@
+{
+  "name": "net_schedule",
+  "version": "1.0.0",
+  "description": "Arduino-free scheduling of the network task: ADS-B polls and the slower weather feeds, one at a time",
+  "platforms": "*",
+  "frameworks": "*"
+}
