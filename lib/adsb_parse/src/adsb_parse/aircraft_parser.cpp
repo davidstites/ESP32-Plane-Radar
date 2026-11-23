@@ -11,6 +11,9 @@ namespace adsb_parse {
 
 namespace {
 
+/** US transition altitude: at or above this, altitude is shown as a flight level. */
+constexpr float kFlightLevelMinFt = 18000.0f;
+
 constexpr const char* kFilterKeys[] = {
     "lat", "lon", "true_heading", "mag_heading", "track", "dir", "gs",
     "tas", "ias", "flight",       "hex",         "t",     "alt_baro", "alt_geom", "seen_pos",
@@ -103,6 +106,20 @@ void copyJsonStringTrimmed(const JsonObject& obj, const char* key, char* out,
   out[n] = '\0';
 }
 
+/**
+ * Feet below the US transition altitude, flight level at or above it. Only alt_baro is
+ * pressure altitude, so an alt_geom fallback is rounded to an even flight level (200 ft).
+ */
+void formatAltitudeValue(float alt_ft, bool pressure_alt, char* out, size_t out_len) {
+  if (alt_ft < kFlightLevelMinFt) {
+    snprintf(out, out_len, "%ld ft", std::lround(alt_ft));
+    return;
+  }
+  const long level = pressure_alt ? std::lround(alt_ft / 100.0f)
+                                  : 2 * std::lround(alt_ft / 200.0f);
+  snprintf(out, out_len, "FL%ld", level);
+}
+
 void formatAltitudeTag(const JsonObject& plane, char* out, size_t out_len) {
   out[0] = '\0';
   if (isOnGround(plane)) {
@@ -111,9 +128,10 @@ void formatAltitudeTag(const JsonObject& plane, char* out, size_t out_len) {
   }
 
   float alt = 0.0f;
-  if (readJsonFloat(plane, "alt_baro", &alt) ||
-      readJsonFloat(plane, "alt_geom", &alt)) {
-    snprintf(out, out_len, "%d ft", static_cast<int>(std::lround(alt)));
+  if (readJsonFloat(plane, "alt_baro", &alt)) {
+    formatAltitudeValue(alt, true, out, out_len);
+  } else if (readJsonFloat(plane, "alt_geom", &alt)) {
+    formatAltitudeValue(alt, false, out, out_len);
   }
 }
 

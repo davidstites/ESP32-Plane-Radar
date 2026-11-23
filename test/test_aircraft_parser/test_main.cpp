@@ -145,7 +145,7 @@ TEST(AircraftParserTest, TypeTruncatedTo4) {
 }
 
 TEST(AircraftParserTest, AltitudeTag) {
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":35000})").alt, "35000 ft");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":12000})").alt, "12000 ft");
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_geom":1200.6})").alt, "1201 ft");
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":"unknown","alt_geom":900})").alt,
                "900 ft");
@@ -160,6 +160,23 @@ TEST(AircraftParserTest, SpeedTag) {
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2})").speed, "");
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"tas":200,"ias":300})").speed, "");
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":"ground","gs":12})").speed, "");
+}
+
+TEST(AircraftParserTest, AltitudeTagFlightLevel) {
+  // Pressure altitude: flight level from 18,000 ft, nearest 100 ft.
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":17999})").alt, "17999 ft");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":18000})").alt, "FL180");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":35000})").alt, "FL350");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":34960})").alt, "FL350");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":35040})").alt, "FL350");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":35075})").alt, "FL351");
+  // Geometric fallback: flight level rounded to an even level (200 ft).
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":"unknown","alt_geom":17999})").alt,
+               "17999 ft");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_geom":18000})").alt, "FL180");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_geom":35060})").alt, "FL350");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_geom":35160})").alt, "FL352");
+  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_geom":35100})").alt, "FL352");
 }
 
 TEST(AircraftParserTest, EmptyAcArrayReturnsZero) {
