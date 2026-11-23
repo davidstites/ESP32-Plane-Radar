@@ -10,7 +10,10 @@ constexpr size_t kTokenLen = 6;
 /** Fills `out` with kTokenLen unambiguous characters derived from `random`. */
 void makeToken(uint32_t random, char (&out)[kTokenLen + 1]);
 
-/** Exact, null-safe comparison that does not exit early on the first mismatch. */
+/**
+ * Null-safe comparison, case-insensitive for typed codes, that does not exit early on the
+ * first mismatch. An empty expected token never matches.
+ */
 bool tokenMatches(const char* expected, const char* given);
 
 /**

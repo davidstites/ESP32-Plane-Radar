@@ -72,14 +72,25 @@ TEST(TokenTest, IsDeterministicAndDistinct) {
   EXPECT_STREQ(a, "222232");
 }
 
-TEST(TokenTest, MatchRejectsNullPrefixExtensionAndCase) {
+TEST(TokenTest, MatchRejectsNullPrefixAndExtension) {
   EXPECT_TRUE(tokenMatches("ABCDEF", "ABCDEF"));
   EXPECT_FALSE(tokenMatches(nullptr, "ABCDEF"));
   EXPECT_FALSE(tokenMatches("ABCDEF", nullptr));
   EXPECT_FALSE(tokenMatches("ABCDEF", "ABC"));
   EXPECT_FALSE(tokenMatches("ABCDEF", "ABCDEFG"));
-  EXPECT_FALSE(tokenMatches("ABCDEF", "abcdef"));
   EXPECT_FALSE(tokenMatches("ABCDEF", ""));
+  EXPECT_FALSE(tokenMatches("ABCDEF", "ABCDEG"));
+}
+
+TEST(TokenTest, MatchIgnoresCaseOfTypedCode) {
+  EXPECT_TRUE(tokenMatches("ABCDEF", "abcdef"));
+  EXPECT_TRUE(tokenMatches("ABCDEF", "AbCdEf"));
+  EXPECT_FALSE(tokenMatches("ABCDEF", "abcdeg"));
+}
+
+TEST(TokenTest, EmptyExpectedTokenNeverMatches) {
+  EXPECT_FALSE(tokenMatches("", ""));
+  EXPECT_FALSE(tokenMatches("", "ABCDEF"));
 }
 
 TEST(BuildUrlTest, FormatsQuery) {
@@ -212,6 +223,55 @@ TEST(QrTest, AcceptsLongestSupportedPayload) {
   const std::string longest(106, 'a');
   ASSERT_TRUE(encodeQr(longest.c_str(), &qr));
   EXPECT_EQ(qr.size, 37);
+}
+
+// Matrix verified to decode back to the URL with an independent decoder (OpenCV).
+TEST(QrTest, MatchesVerifiedMatrixForSetupUrl) {
+  static const char* const kExpected[] = {
+    "#######.#....##.#...#..#..#######",
+    "#.....#.#..#####...##.#.#.#.....#",
+    "#.###.#.##..#.#..#####.##.#.###.#",
+    "#.###.#.###.#...#..#...#..#.###.#",
+    "#.###.#..##.#.......#.##..#.###.#",
+    "#.....#.###.......##.##...#.....#",
+    "#######.#.#.#.#.#.#.#.#.#.#######",
+    "..........##.#...#...##.#........",
+    "##..###...#.##...###.###...#.####",
+    "....#..##....##.#.#.##.###....#..",
+    "####.##..##....#..#..###.##.#.##.",
+    "...#.#.###..#.##.#.###.#..##.#...",
+    ".#....#....#.##..#..###...####.##",
+    "..#..#..###.#...#...#..#.#.#.....",
+    ".#..#.##.#.########...###..#####.",
+    "#..#...#...#.#.#.#...#.###...#...",
+    ".....##..#..##...#...##...#.#...#",
+    "#...##..###..##.###.#..#...#.#...",
+    "##.####..##....#..#..#.#...#..##.",
+    ".###....###.#.#.######.##..###...",
+    "##....#..###.##..#.#.#....###...#",
+    "####....#.#.#...###.####...#.#...",
+    "....###.##.######...##.##...#.##.",
+    "...###...#.#.#..###..#.##..##....",
+    "##.#..#.###.##...#.#.#..#####..#.",
+    "........##...##.#.#.#.#.#...##.#.",
+    "#######..#.....#.##..##.#.#.#..#.",
+    "#.....#.#...#.########..#...#...#",
+    "#.###.#.####.##..#..##..#####..#.",
+    "#.###.#..#..#...###.####.##.###..",
+    "#.###.#..#.#####..#..###..#.#....",
+    "#.....#.##.#.#.#.#.#.#..#####....",
+    "#######.#.#.##.#####.#.##..#.#..#",
+  };
+  QrCode qr;
+  ASSERT_TRUE(encodeQr("https://metarly.app/setup?device=192.168.1.50&token=ABCDEF", &qr));
+  ASSERT_EQ(qr.size, 33);
+  for (int y = 0; y < qr.size; ++y) {
+    for (int x = 0; x < qr.size; ++x) {
+      EXPECT_EQ(qr.module(static_cast<uint8_t>(x), static_cast<uint8_t>(y)),
+                kExpected[y][x] == '#')
+          << "module " << x << "," << y;
+    }
+  }
 }
 
 TEST(QrTest, FinderPatternCorners) {

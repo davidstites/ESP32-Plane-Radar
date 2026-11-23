@@ -29,7 +29,7 @@ The 3 s hold works any time the firmware is running, including during Wi‑Fi co
 1. Connect to **`PlaneRadar-Setup`**
 2. Open **`http://plane-radar.local`** (preferred) or **`http://192.168.4.1`** — both are shown on the yellow setup screen; captive portal may open automatically
 3. Set home Wi‑Fi, then save
-4. **Set your location**: once the device joins Wi‑Fi it shows a QR code (and `metarly.app/setup`, the device IP and a 6-character code for typing). Scan it, or open the page and enter the IP and code, then search an address or airport (ICAO/IATA), or tap **Use my current location**. The radar appears as soon as a location is saved. There is no skip: the built-in default location is Amsterdam
+4. **Set your location**: once the device joins Wi‑Fi it shows a QR code (and `metarly.app/setup`, the device IP and a 6-character code for typing). Scan it, or open the page and enter the IP and code, then search an address or airport (ICAO/IATA), or tap **Use my current location**. The radar appears as soon as a location is saved. There is no skip: the built-in default location is Amsterdam. Devices that only ever stored that default (older firmware saved it on every portal save) are asked for a location again. The code is not case-sensitive
 
 **Reconfigure anytime** (after the device is on your network):
 

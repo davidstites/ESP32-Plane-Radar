@@ -3,6 +3,8 @@
 #include <Preferences.h>
 #include <setup_link/setup_link.h>
 
+#include <atomic>
+
 #include "config.h"
 
 namespace services::location {
@@ -12,20 +14,30 @@ namespace {
 constexpr char kPrefsNamespace[] = "radar";
 constexpr char kKeyLat[] = "lat";
 constexpr char kKeyLon[] = "lon";
+/** Set when the location was stored by this firmware's save path (see init()). */
+constexpr char kKeyChosen[] = "chosen";
 
 double s_lat = config::kDefaultRadarLat;
 double s_lon = config::kDefaultRadarLon;
-bool s_saved = false;
+// Read by the network task, written by the loop task.
+std::atomic<bool> s_saved{false};
 
-void persist(double lat, double lon) {
+/** Writes the pair to NVS; the in-memory location only changes when every write landed. */
+bool persist(double lat, double lon) {
   Preferences prefs;
-  prefs.begin(kPrefsNamespace, false);
-  prefs.putDouble(kKeyLat, lat);
-  prefs.putDouble(kKeyLon, lon);
+  if (!prefs.begin(kPrefsNamespace, false)) {
+    return false;
+  }
+  const bool ok = prefs.putDouble(kKeyLat, lat) != 0 && prefs.putDouble(kKeyLon, lon) != 0 &&
+                  prefs.putBool(kKeyChosen, true) != 0;
   prefs.end();
+  if (!ok) {
+    return false;
+  }
   s_lat = lat;
   s_lon = lon;
   s_saved = true;
+  return true;
 }
 
 }  // namespace
@@ -36,7 +48,12 @@ void init() {
   if (prefs.isKey(kKeyLat) && prefs.isKey(kKeyLon)) {
     const double lat = prefs.getDouble(kKeyLat, config::kDefaultRadarLat);
     const double lon = prefs.getDouble(kKeyLon, config::kDefaultRadarLon);
-    if (setup_link::validLatLon(lat, lon)) {
+    // Older firmware stored the prefilled default on every portal save, so exactly the
+    // default pair without our marker was never a choice: ask for a location again.
+    const bool legacy_default = !prefs.getBool(kKeyChosen, false) &&
+                                lat == config::kDefaultRadarLat &&
+                                lon == config::kDefaultRadarLon;
+    if (setup_link::validLatLon(lat, lon) && !legacy_default) {
       s_lat = lat;
       s_lon = lon;
       s_saved = true;
@@ -55,7 +72,10 @@ bool save(double lat, double lon) {
   if (!setup_link::validLatLon(lat, lon)) {
     return false;
   }
-  persist(lat, lon);
+  if (!persist(lat, lon)) {
+    Serial.println("Radar location could not be written to NVS");
+    return false;
+  }
   Serial.printf("Radar location saved: %.6f, %.6f\n", lat, lon);
   return true;
 }
@@ -71,6 +91,7 @@ void clear() {
   prefs.begin(kPrefsNamespace, false);
   prefs.remove(kKeyLat);
   prefs.remove(kKeyLon);
+  prefs.remove(kKeyChosen);
   prefs.end();
   s_lat = config::kDefaultRadarLat;
   s_lon = config::kDefaultRadarLon;

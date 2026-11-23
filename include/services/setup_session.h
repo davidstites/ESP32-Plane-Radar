@@ -4,10 +4,11 @@
 
 namespace services::setup {
 
-/** Generate this boot's setup code. Call once before Wi-Fi setup. */
-void init();
-
-/** The code the hosted setup page must send with a location (also shown on the QR screen). */
+/**
+ * The code the hosted setup page must send with a location (also shown on the QR screen).
+ * Generated on first use, which must be after Wi-Fi is up: esp_random() is only truly random
+ * while the radio is on. Until then no code exists and /location rejects every request.
+ */
 const char* token();
 
 /** Full setup-page URL for the current LAN address; false without a link or if it does not fit. */

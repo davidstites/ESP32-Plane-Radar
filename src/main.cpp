@@ -94,7 +94,6 @@ void setup() {
     statusScreenPortal();
   }
   services::location::init();
-  services::setup::init();
   ui::radar::rangeInit();
   services::adsb::init();
   services::metar::init();

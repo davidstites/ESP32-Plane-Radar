@@ -39,8 +39,9 @@ constexpr int kQrSmallModulePx = 4;
 constexpr int kQrLargeMinSize = 29;
 /** Top of the QR: low enough that its corners keep a wide margin inside the circle. */
 constexpr int kQrTopPx = 34;
-constexpr int kSetupLine1Y = 158;
-constexpr int kSetupLineStepPx = 22;
+/** Three text lines under the QR: the lowest edge sits where the circle is still ~170 px wide. */
+constexpr int kSetupLine1Y = 153;
+constexpr int kSetupLineStepPx = 20;
 setup_link::QrCode s_setup_qr;
 
 char s_connecting_ssid[33];

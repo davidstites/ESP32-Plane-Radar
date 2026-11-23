@@ -15,18 +15,24 @@ char s_token[setup_link::kTokenLen + 1] = "";
 
 bool saveLocation(double lat, double lon) { return location::save(lat, lon); }
 
+const char* ensureToken() {
+  if (s_token[0] == '\0') {
+    setup_link::makeToken(esp_random(), s_token);
+  }
+  return s_token;
+}
+
 }  // namespace
 
-void init() { setup_link::makeToken(esp_random(), s_token); }
-
-const char* token() { return s_token; }
+const char* token() { return ensureToken(); }
 
 bool url(char* out, size_t cap) {
   if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
     return false;
   }
   const String ip = WiFi.localIP().toString();
-  return setup_link::buildSetupUrl(out, cap, config::kSetupPageUrl, ip.c_str(), s_token) != 0;
+  return setup_link::buildSetupUrl(out, cap, config::kSetupPageUrl, ip.c_str(),
+                                 ensureToken()) != 0;
 }
 
 int handleLocation(const char* token, const char* lat, const char* lon,

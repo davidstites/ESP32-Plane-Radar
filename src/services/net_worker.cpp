@@ -67,7 +67,8 @@ void workerTask(void*) {
   radar_geo::ViewKey last_view = currentView();
   bool last_show_precip = ui::radar::showPrecip();
   for (;;) {
-    if (WiFi.status() != WL_CONNECTED) {
+    // No fetching for the placeholder location while the setup QR screen is showing.
+    if (WiFi.status() != WL_CONNECTED || !location::hasSaved()) {
       vTaskDelay(pdMS_TO_TICKS(net_schedule::kMaxSleepMs));
       continue;
     }

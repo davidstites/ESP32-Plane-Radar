@@ -267,10 +267,11 @@ void handleLocationRoute() {
   String page =
       "<!doctype html><meta charset=\"utf-8\">"
       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-      "<title>Plane Radar</title><body style=\"font-family:system-ui,sans-serif;"
-      "padding:2rem\"><h2>";
+      "<title>Plane Radar</title>";
+  page += services::portal::kPortalHeadHtml;
+  page += "<body><div class=\"wrap\"><h2>";
   page += message;
-  page += "</h2></body>";
+  page += "</h2></div></body>";
   s_wm.server->sendHeader("Cache-Control", "no-store");
   s_wm.server->send(status, "text/html", page);
 }

@@ -1,5 +1,6 @@
 #include "setup_link/setup_link.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -45,12 +46,13 @@ bool tokenMatches(const char* expected, const char* given) {
     return false;
   }
   const size_t len = strlen(expected);
-  if (strlen(given) != len) {
+  if (len == 0 || strlen(given) != len) {
     return false;
   }
   unsigned diff = 0;
   for (size_t i = 0; i < len; ++i) {
-    diff |= static_cast<unsigned char>(expected[i] ^ given[i]);
+    diff |= static_cast<unsigned char>(toupper(static_cast<unsigned char>(expected[i])) ^
+                                       toupper(static_cast<unsigned char>(given[i])));
   }
   return diff == 0;
 }
