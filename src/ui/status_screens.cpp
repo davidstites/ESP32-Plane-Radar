@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include <radar_geo/radar_geo.h>
+#include <setup_link/setup_link.h>
 
 #include "config.h"
 #include "hardware/display.h"
@@ -30,6 +31,14 @@ struct SpinnerDot {
   int y = 0;
   bool drawn = false;
 };
+
+constexpr uint16_t kQrLight = 0xFFFF;
+constexpr int kQrModulePx = 4;
+/** Top of the QR: low enough that its corners stay inside the round panel. */
+constexpr int kQrTopPx = 30;
+constexpr int kSetupLine1Y = 176;
+constexpr int kSetupLineStepPx = 20;
+setup_link::QrCode s_setup_qr;
 
 char s_connecting_ssid[33];
 char s_ssid_line[33];
@@ -239,4 +248,31 @@ void statusScreenWifiReset() {
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenSetupQr(const char* url, const char* ip, const char* token) {
+  tft.fillScreen(kQrLight);
+
+  if (setup_link::encodeQr(url, &s_setup_qr)) {
+    const int left = kCenterX - s_setup_qr.size * kQrModulePx / 2;
+    for (int y = 0; y < s_setup_qr.size; ++y) {
+      for (int x = 0; x < s_setup_qr.size; ++x) {
+        if (s_setup_qr.module(static_cast<uint8_t>(x), static_cast<uint8_t>(y))) {
+          tft.fillRect(left + x * kQrModulePx, kQrTopPx + y * kQrModulePx, kQrModulePx,
+                       kQrModulePx, config::kColorBlack);
+        }
+      }
+    }
+  }
+
+  tft.setTextDatum(textdatum_t::middle_center);
+  tft.setTextColor(config::kColorBlack, kQrLight);
+  applyConnectingDetailStyle();
+
+  char line[40];
+  tft.drawString(config::kSetupPageShortUrl, kCenterX, kSetupLine1Y);
+  snprintf(line, sizeof(line), "IP %s", ip);
+  tft.drawString(line, kCenterX, kSetupLine1Y + kSetupLineStepPx);
+  snprintf(line, sizeof(line), "Code %s", token);
+  tft.drawString(line, kCenterX, kSetupLine1Y + 2 * kSetupLineStepPx);
 }
