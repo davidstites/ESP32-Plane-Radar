@@ -109,6 +109,22 @@ TEST(MetarParse, RejectsBrokenJson) {
   EXPECT_NE(result.error, nullptr);
 }
 
+TEST(MetarParse, RejectsBrokenJsonFromAnLvalueString) {
+  const std::string json = R"([{"icaoId":"KSFO",)";
+  Station out[kMaxStations];
+  const auto result = parseStations(json, out, kMaxStations);
+  EXPECT_FALSE(result.ok);
+  EXPECT_NE(result.error, nullptr);
+}
+
+TEST(MetarParse, RejectsBrokenJsonFromAStream) {
+  std::istringstream stream(R"([{"icaoId":"KSFO",)");
+  Station out[kMaxStations];
+  const auto result = parseStations(stream, out, kMaxStations);
+  EXPECT_FALSE(result.ok);
+  EXPECT_NE(result.error, nullptr);
+}
+
 TEST(MetarParse, ReadsFromAStream) {
   std::istringstream stream(R"([{"icaoId":"KSFO","fltCat":"LIFR"}])");
   Station out[kMaxStations];
