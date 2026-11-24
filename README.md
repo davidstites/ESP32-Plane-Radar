@@ -34,7 +34,7 @@ The 3 s hold works any time the firmware is running, including during Wi‑Fi co
 **Reconfigure anytime** (after the device is on your network):
 
 1. Open **`http://plane-radar.local`** or **`http://<device-ip>`** (e.g. from your router or serial log at boot)
-2. Change Wi‑Fi, units, or runway overlay; save. The **Set location with address search** link at the top of the page reopens the setup page for this device; raw latitude/longitude are under **Advanced**
+2. **Configure WiFi** changes the network. **Setup** holds units, range and overlays; its **Set location with address search** link reopens the setup page for this device, and raw latitude/longitude are under **Advanced**. Save on each page
 
 The same portal runs on the setup AP and on the device’s LAN IP while connected to Wi‑Fi. mDNS hostname is `plane-radar` → **plane-radar.local** (`kPortalHostname` in `config.h`). Some clients resolve `.local` slowly; use the IP if needed.
 

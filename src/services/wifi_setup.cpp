@@ -54,6 +54,10 @@ WiFiManagerParameter s_param_adv_open(
     "<details class=\"adv\"><summary>Advanced: coordinates</summary>");
 WiFiManagerParameter s_param_adv_close("</details>");
 
+// WiFiManager puts a <br/> before inputs, not before labels, so a label-first field that
+// follows a checkbox would run onto the checkbox's line without this.
+WiFiManagerParameter s_param_break("<br/>");
+
 WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
 WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
@@ -148,6 +152,7 @@ void attachPortalParams(WiFiManager& wm) {
   wm.addParameter(&s_param_lon);
   wm.addParameter(&s_param_adv_close);
   wm.addParameter(&s_param_miles);
+  wm.addParameter(&s_param_break);
   wm.addParameter(&s_param_range);
   wm.addParameter(&s_param_runways);
   wm.addParameter(&s_param_precip);
@@ -285,6 +290,9 @@ void ensureWifiManager() {
   if (s_wm_configured) {
     return;
   }
+  // Units, range, overlays and coordinates live on their own "Setup" page; the Wi-Fi page
+  // shows only network entry.
+  s_wm.setParamsPage(true);
   s_wm.setWebServerCallback(registerPortalRoutes);
   s_wm.setCustomHeadElement(services::portal::kPortalHeadHtml);
   s_wm.setConfigPortalTimeout(config::kWifiPortalTimeoutSec);
