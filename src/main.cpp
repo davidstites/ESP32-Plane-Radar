@@ -13,6 +13,7 @@
 #include "services/net_worker.h"
 #include "services/precip_client.h"
 #include "services/radar_location.h"
+#include "services/setup_session.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
 #include "ui/radar_range.h"
@@ -21,15 +22,35 @@
 namespace {
 
 bool g_radar_visible = false;
+bool g_setup_screen_visible = false;
 unsigned long g_wifi_down_since = 0;
 unsigned long g_last_reconnect_ms = 0;
 unsigned long g_last_redraw_ms = 0;
 
+void showSetupScreen() {
+  char url[160];
+  if (!services::setup::url(url, sizeof(url))) {
+    return;
+  }
+  statusScreenSetupQr(url, WiFi.localIP().toString().c_str(), services::setup::token());
+  g_setup_screen_visible = true;
+}
+
+// Radar once a location is saved; until then the setup QR screen.
 void showRadarIfConnected() {
   if (WiFi.status() != WL_CONNECTED) {
     g_radar_visible = false;
+    g_setup_screen_visible = false;
     return;
   }
+  if (!services::location::hasSaved()) {
+    g_radar_visible = false;
+    if (!g_setup_screen_visible) {
+      showSetupScreen();
+    }
+    return;
+  }
+  g_setup_screen_visible = false;
   ui::radarDisplayDraw();
   g_radar_visible = true;
 }
@@ -95,6 +116,7 @@ void loop() {
       Serial.println("WiFi lost — will reconnect");
       g_radar_visible = false;
     }
+    g_setup_screen_visible = false;
 
     if (g_wifi_down_since == 0) {
       g_wifi_down_since = millis();

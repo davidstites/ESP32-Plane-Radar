@@ -16,7 +16,9 @@
 
 #include "config.h"
 #include "hardware/boot_button.h"
+#include "services/portal_style.h"
 #include "services/radar_location.h"
+#include "services/setup_session.h"
 #include "ui/radar_range.h"
 #include "ui/status_screens.h"
 
@@ -38,6 +40,23 @@ bool wifiLinkUp();
 constexpr int kCoordParamLen = 20;
 constexpr char kCoordInputAttrs[] =
     " type=\"number\" step=\"0.000001\"";
+
+// What the lat/lon fields were prefilled with: unchanged values must not be saved, or the
+// first Wi-Fi save would store the default location as if the user had chosen it.
+char s_lat_prefill[kCoordParamLen + 1] = "";
+char s_lon_prefill[kCoordParamLen + 1] = "";
+
+// Shown at the top of the parameters page while on the LAN; empty otherwise.
+char s_location_link_html[256] = "";
+WiFiManagerParameter s_param_location_link(s_location_link_html);
+
+WiFiManagerParameter s_param_adv_open(
+    "<details class=\"adv\"><summary>Advanced: coordinates</summary>");
+WiFiManagerParameter s_param_adv_close("</details>");
+
+// WiFiManager puts a <br/> before inputs, not before labels, so a label-first field that
+// follows a checkbox would run onto the checkbox's line without this.
+WiFiManagerParameter s_param_break("<br/>");
 
 WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
@@ -66,11 +85,31 @@ char s_precip_checkbox_attrs[32] = "type=\"checkbox\"";
 WiFiManagerParameter s_param_precip("show_precip", "Show NEXRAD precipitation (US only)", "T", 2,
                                     s_precip_checkbox_attrs, WFM_LABEL_AFTER);
 
+/** Builds the "set location" link (HTML-escaped) or clears it when there is no LAN address. */
+void refreshLocationLink() {
+  char url[160];
+  if (!services::setup::url(url, sizeof(url))) {
+    s_location_link_html[0] = '\0';
+    return;
+  }
+  size_t n = snprintf(s_location_link_html, sizeof(s_location_link_html),
+                      "<p><a href=\"");
+  for (const char* c = url; *c != '\0' && n + 8 < sizeof(s_location_link_html); ++c) {
+    n += snprintf(s_location_link_html + n, sizeof(s_location_link_html) - n,
+                  *c == '&' ? "&amp;" : "%c", *c);
+  }
+  snprintf(s_location_link_html + n, sizeof(s_location_link_html) - n,
+           "\">Set location with address search</a></p>");
+}
+
 void refreshPortalParamValues() {
+  refreshLocationLink();
   char lat_buf[kCoordParamLen + 1];
   char lon_buf[kCoordParamLen + 1];
   snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
   snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
+  strncpy(s_lat_prefill, lat_buf, sizeof(s_lat_prefill));
+  strncpy(s_lon_prefill, lon_buf, sizeof(s_lon_prefill));
   s_param_lat.setValue(lat_buf, kCoordParamLen);
   s_param_lon.setValue(lon_buf, kCoordParamLen);
   char range_buf[kRangeParamLen + 1];
@@ -89,7 +128,9 @@ void refreshPortalParamValues() {
 }
 
 void onPortalParamsSaved() {
-  if (!services::location::saveFromStrings(s_param_lat.getValue(),
+  if ((strcmp(s_param_lat.getValue(), s_lat_prefill) != 0 ||
+       strcmp(s_param_lon.getValue(), s_lon_prefill) != 0) &&
+      !services::location::saveFromStrings(s_param_lat.getValue(),
                                            s_param_lon.getValue())) {
     Serial.println("Invalid lat/lon in portal — keeping previous location");
   }
@@ -105,9 +146,13 @@ void onPortalParamsSaved() {
 
 void attachPortalParams(WiFiManager& wm) {
   refreshPortalParamValues();
+  wm.addParameter(&s_param_location_link);
+  wm.addParameter(&s_param_adv_open);
   wm.addParameter(&s_param_lat);
   wm.addParameter(&s_param_lon);
+  wm.addParameter(&s_param_adv_close);
   wm.addParameter(&s_param_miles);
+  wm.addParameter(&s_param_break);
   wm.addParameter(&s_param_range);
   wm.addParameter(&s_param_runways);
   wm.addParameter(&s_param_precip);
@@ -177,7 +222,10 @@ void eraseWifiCredentials() {
   s_wm.resetSettings();
   s_wm.erase();
   WiFi.disconnect(true, true);
-  WiFi.persistent(false);
+  // Leave persistence on: the core picks flash or RAM storage when Wi-Fi next initialises
+  // (from this flag), so turning it off here made the portal's Wi-Fi RAM-only and the
+  // credentials entered after a reset were lost on reboot.
+  WiFi.persistent(true);
 
   WiFi.mode(WIFI_OFF);
   delay(100);
@@ -212,10 +260,41 @@ bool wifiLinkUp() {
          WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
+/** GET /location?lat=&lon=&token= from the hosted setup page (runs inside s_wm.process()). */
+void handleLocationRoute() {
+  const String lat = s_wm.server->arg("lat");
+  const String lon = s_wm.server->arg("lon");
+  const String token = s_wm.server->arg("token");
+  const char* message = "";
+  const int status =
+      services::setup::handleLocation(token.c_str(), lat.c_str(), lon.c_str(), &message);
+  if (status == 200) {
+    // Keep the portal's lat/lon fields and their prefill in step with the saved location.
+    refreshPortalParamValues();
+  }
+  String page =
+      "<!doctype html><meta charset=\"utf-8\">"
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      "<title>Plane Radar</title>";
+  page += services::portal::kPortalHeadHtml;
+  page += "<body><div class=\"wrap\"><h2>";
+  page += message;
+  page += "</h2></div></body>";
+  s_wm.server->sendHeader("Cache-Control", "no-store");
+  s_wm.server->send(status, "text/html", page);
+}
+
+void registerPortalRoutes() { s_wm.server->on("/location", HTTP_GET, handleLocationRoute); }
+
 void ensureWifiManager() {
   if (s_wm_configured) {
     return;
   }
+  // Units, range, overlays and coordinates live on their own "Setup" page; the Wi-Fi page
+  // shows only network entry.
+  s_wm.setParamsPage(true);
+  s_wm.setWebServerCallback(registerPortalRoutes);
+  s_wm.setCustomHeadElement(services::portal::kPortalHeadHtml);
   s_wm.setConfigPortalTimeout(config::kWifiPortalTimeoutSec);
   s_wm.setAPStaticIPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1),
                            IPAddress(255, 255, 255, 0));

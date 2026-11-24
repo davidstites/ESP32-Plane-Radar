@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include <radar_geo/radar_geo.h>
+#include <setup_link/setup_link.h>
 
 #include "config.h"
 #include "hardware/display.h"
@@ -30,6 +31,18 @@ struct SpinnerDot {
   int y = 0;
   bool drawn = false;
 };
+
+constexpr uint16_t kQrLight = 0xFFFF;
+/** Version 3+ codes (29+ modules) use smaller modules so the quiet zone fits the round panel. */
+constexpr int kQrLargeModulePx = 3;
+constexpr int kQrSmallModulePx = 4;
+constexpr int kQrLargeMinSize = 29;
+/** Top of the QR: low enough that its corners keep a wide margin inside the circle. */
+constexpr int kQrTopPx = 34;
+/** Three text lines under the QR: the lowest edge sits where the circle is still ~170 px wide. */
+constexpr int kSetupLine1Y = 153;
+constexpr int kSetupLineStepPx = 20;
+setup_link::QrCode s_setup_qr;
 
 char s_connecting_ssid[33];
 char s_ssid_line[33];
@@ -239,4 +252,33 @@ void statusScreenWifiReset() {
   };
   drawTextBlock(config::kColorYellow, config::kTextOnYellow, lines,
                 sizeof(lines) / sizeof(lines[0]));
+}
+
+void statusScreenSetupQr(const char* url, const char* ip, const char* token) {
+  tft.fillScreen(kQrLight);
+
+  if (setup_link::encodeQr(url, &s_setup_qr)) {
+    const int module_px =
+        s_setup_qr.size >= kQrLargeMinSize ? kQrLargeModulePx : kQrSmallModulePx;
+    const int left = kCenterX - s_setup_qr.size * module_px / 2;
+    for (int y = 0; y < s_setup_qr.size; ++y) {
+      for (int x = 0; x < s_setup_qr.size; ++x) {
+        if (s_setup_qr.module(static_cast<uint8_t>(x), static_cast<uint8_t>(y))) {
+          tft.fillRect(left + x * module_px, kQrTopPx + y * module_px, module_px, module_px,
+                       config::kColorBlack);
+        }
+      }
+    }
+  }
+
+  tft.setTextDatum(textdatum_t::middle_center);
+  tft.setTextColor(config::kColorBlack, kQrLight);
+  applyConnectingDetailStyle();
+
+  char line[40];
+  tft.drawString(config::kSetupPageShortUrl, kCenterX, kSetupLine1Y);
+  snprintf(line, sizeof(line), "IP %s", ip);
+  tft.drawString(line, kCenterX, kSetupLine1Y + kSetupLineStepPx);
+  snprintf(line, sizeof(line), "Code %s", token);
+  tft.drawString(line, kCenterX, kSetupLine1Y + 2 * kSetupLineStepPx);
 }
