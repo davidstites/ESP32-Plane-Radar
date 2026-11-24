@@ -52,12 +52,13 @@ After a reset, the device reboots and shows the setup screen immediately (no “
 
 ## Setup page (metarly.app)
 
-`site/setup/` is the static page the QR code opens: it takes a place (airport code, address, your current location or coordinates) and sends it to the radar. It has no build step and no dependencies; deploy the contents of `site/` as the web root so that `/setup` serves `site/setup/index.html`.
+`site/setup/` is the static page the QR code opens: it takes a place (airport code, address, your current location or coordinates) and sends it to the radar. It has no build step and no dependencies. Deploy `site/setup/` at the `/setup/` path of the domain (`site/tests/` and `site/package.json` are not needed). The QR code links to `/setup` without a trailing slash, and the page loads its files by absolute path, so it works whether the host redirects to `/setup/` or serves `index.html` directly.
 
 - **How it works:** the page reads the radar's address and one-time code from the QR link, then navigates your browser to `http://<radar>/location?lat=…&lon=…&token=…` (a navigation, not a `fetch`, because an HTTPS page may not call a plain-HTTP device). It only accepts `*.local` names and private or link-local addresses as the radar address.
-- **Lookups:** airport codes and names are matched in the browser against `site/setup/data/airports.json`. Addresses go from your browser to OpenStreetMap's Nominatim (Photon as a fallback), one request per search press. The radar only receives coordinates.
+- **Lookups:** airport codes and names are matched in the browser against `site/setup/data/airports.json` (each row is `[ident, iata, name, lat, lon, rank]`; larger airports sort first). Addresses go from your browser to OpenStreetMap's Nominatim (Photon as a fallback), one request per search press. The radar only receives coordinates.
 - **Regenerate the airport list:** `python3 scripts/build_airports_json.py`
 - **Tests** (Node 22+, no install): `node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-include='site/setup/lib/*.js' 'site/tests/*.test.js'`. The logic lives in `site/setup/lib/`; `app.js` only wires it to the page.
+- **Browsers:** any from 2020 or later (the page uses `??=`; older ones show an unstyled, inactive page).
 - **Try it locally:** `python3 -m http.server 8080 --directory site`, then open `http://localhost:8080/setup/?device=<radar-ip>&token=<code>`.
 
 ## Radar display

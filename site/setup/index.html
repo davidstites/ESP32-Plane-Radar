@@ -6,24 +6,26 @@
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://nominatim.openstreetmap.org https://photon.komoot.io; img-src 'self'; base-uri 'none'; form-action 'none'">
   <title>Set up your radar</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/setup/style.css">
 </head>
 <body>
   <main class="page">
     <h1>Set up your radar</h1>
     <p class="lede">Choose where your radar sits. It centers on that spot and shows the aircraft around it.</p>
 
+    <noscript><p class="message is-error">This page needs JavaScript to work.</p></noscript>
+
     <section class="block" aria-labelledby="radar-heading">
       <h2 id="radar-heading">Your radar</h2>
       <div class="pair">
         <div class="field">
           <label for="device">Radar address</label>
-          <input id="device" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="192.168.1.20">
+          <input id="device" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="192.168.1.20" aria-describedby="device-hint">
           <p class="hint" id="device-hint">Shown on the radar screen, like 192.168.1.20.</p>
         </div>
         <div class="field">
           <label for="code">Setup code</label>
-          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="ABC234">
+          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="ABC234" aria-describedby="code-hint">
           <p class="hint" id="code-hint">Six characters under the QR code.</p>
         </div>
       </div>
@@ -35,7 +37,7 @@
         <label for="query">Airport code, place or address</label>
         <div class="search-row">
           <input id="query" type="search" autocomplete="off" spellcheck="false" placeholder="KSFO or 1 Main St">
-          <button type="submit" class="btn">Search</button>
+          <button type="submit" class="btn" id="search-btn">Search</button>
         </div>
       </form>
       <div class="alt">
@@ -75,8 +77,8 @@
     <button type="button" id="send" class="btn btn-primary" disabled>Send to radar</button>
     <p class="message" id="send-message" role="status" aria-live="polite"></p>
 
-    <p class="privacy">Addresses you search go from your browser to OpenStreetMap's search service. Your radar only receives the coordinates.</p>
+    <p class="privacy">Addresses you search go from your browser to OpenStreetMap's search service. Your radar only receives the coordinates. Search data &copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer">OpenStreetMap contributors</a>.</p>
   </main>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="/setup/app.js"></script>
 </body>
 </html>

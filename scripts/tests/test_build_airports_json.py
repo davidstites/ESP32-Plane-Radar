@@ -54,13 +54,23 @@ class AirportRowsTest(unittest.TestCase):
             ]
         )
         self.assertEqual([r[0] for r in rows], ["KSFO", "KSJC"])
-        self.assertEqual(rows[0][3:], [37.619, -122.375])
+        self.assertEqual(rows[0][3:5], [37.619, -122.375])
 
-    def test_shape_is_ident_iata_name_lat_lon(self):
+    def test_shape_is_ident_iata_name_lat_lon_rank(self):
         rows = bai.airport_rows([row()])
         self.assertEqual(
-            rows, [["KSFO", "SFO", "San Francisco International Airport", 37.619, -122.375]]
+            rows, [["KSFO", "SFO", "San Francisco International Airport", 37.619, -122.375, 0]]
         )
+
+    def test_rank_orders_large_before_medium_before_small(self):
+        rows = bai.airport_rows(
+            [
+                row(ident="KAAA", type="small_airport", iata_code=""),
+                row(ident="KBBB", type="medium_airport", iata_code=""),
+                row(ident="KCCC", type="large_airport", iata_code=""),
+            ]
+        )
+        self.assertEqual({r[0]: r[5] for r in rows}, {"KAAA": 2, "KBBB": 1, "KCCC": 0})
 
     def test_missing_iata_becomes_empty_string(self):
         rows = bai.airport_rows([row(iata_code=None)])

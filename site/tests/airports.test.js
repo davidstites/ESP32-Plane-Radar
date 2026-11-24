@@ -2,14 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { searchAirports } from '../setup/lib/airports.js';
 
+// [ident, iata, name, lat, lon, rank] with rank 0 large, 1 medium, 2 small.
 const INDEX = [
-  ['KAAA', '', 'Aksf Field', 40, -100],
-  ['KABC', 'ABC', '', 41, -101],
-  ['KSFO', 'SFO', 'San Francisco International Airport', 37.61981, -122.37482],
-  ['KSFZ', '', 'North Central State Airport', 41.9208, -71.4914],
-  ['KSJC', 'SJC', 'Norman Y. Mineta San Jose International Airport', 37.3626, -121.92902],
-  ['KXYZ', '', 'SFO Heliport Memorial Field', 35, -90],
-  ['EGLL', 'LHR', 'London Heathrow Airport', 51.4706, -0.46194],
+  ['KAAA', '', 'Aksf Field', 40, -100, 2],
+  ['KABC', 'ABC', '', 41, -101, 2],
+  ['KSFO', 'SFO', 'San Francisco International Airport', 37.61981, -122.37482, 0],
+  ['KSFZ', '', 'North Central State Airport', 41.9208, -71.4914, 2],
+  ['KSJC', 'SJC', 'Norman Y. Mineta San Jose International Airport', 37.3626, -121.92902, 0],
+  ['KXYZ', '', 'SFO Heliport Memorial Field', 35, -90, 2],
+  ['KAPR', '', 'Allen Parish Airport', 30.75, -92.68, 2],
+  ['KLDN', '', 'London Fields', 42, -83, 2],
+  ['LFPO', 'ORY', 'Paris Orly Airport', 48.72333, 2.37944, 1],
+  ['EGLC', 'LCY', 'London City Airport', 51.50528, 0.05528, 1],
+  ['EGLL', 'LHR', 'London Heathrow Airport', 51.4706, -0.46194, 0],
+  ['LFPG', 'CDG', 'Paris Charles de Gaulle Airport', 49.00969, 2.54792, 0],
 ];
 
 const idents = (results) => results.map((r) => r.ident);
@@ -61,4 +67,19 @@ test('results carry coordinates and a label without empty parts', () => {
   });
   assert.equal(searchAirports(INDEX, 'KSFZ')[0].label, 'KSFZ · North Central State Airport');
   assert.equal(searchAirports(INDEX, 'KABC')[0].label, 'KABC · ABC');
+});
+
+test('names are ranked by word start first, then by airport size', () => {
+  assert.deepEqual(idents(searchAirports(INDEX, 'london')), ['EGLL', 'EGLC', 'KLDN']);
+  // "Allen Parish" contains "paris" mid-word, so it comes after both Paris airports.
+  assert.deepEqual(idents(searchAirports(INDEX, 'paris')), ['LFPG', 'LFPO', 'KAPR']);
+});
+
+test('a name match in the middle of a word still finds the airport', () => {
+  assert.deepEqual(idents(searchAirports(INDEX, 'parish')), ['KAPR']);
+});
+
+test('a word-start match works after punctuation as well as spaces', () => {
+  const index = [['KDDD', '', 'Smith-Reynolds Field', 1, 2, 2]];
+  assert.deepEqual(idents(searchAirports(index, 'reynolds')), ['KDDD']);
 });

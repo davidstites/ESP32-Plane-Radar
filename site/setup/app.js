@@ -5,10 +5,12 @@ import { searchAirports } from './lib/airports.js';
 import { geocode } from './lib/geocode.js';
 
 const APPROXIMATE_M = 5000; // geolocation error (metres) beyond which a fix counts as approximate
+const SLOW_PERMISSION_MS = 8000;
+const AIRPORTS_URL = new URL('data/airports.json', import.meta.url);
 const PRECISION_TAG = {
   building: 'Exact address',
   street: 'Street',
-  postcode: 'Postcode',
+  postcode: 'Postcode or neighborhood',
   area: 'Approximate area',
 };
 
@@ -20,6 +22,7 @@ const el = {
   codeHint: $('code-hint'),
   form: $('search-form'),
   query: $('query'),
+  search: $('search-btn'),
   locate: $('locate'),
   coords: $('coords'),
   useCoords: $('use-coords'),
@@ -37,11 +40,20 @@ const DEVICE_HINT = el.deviceHint.textContent;
 const CODE_HINT = el.codeHint.textContent;
 const state = { place: null };
 
+// Every user action that picks or replaces a place bumps this, so a slower earlier request
+// (a search, or a geolocation prompt answered late) cannot overwrite what the user chose since.
+let seq = 0;
+
 let airportsPromise = null;
+/** The airport rows, or null if they could not be loaded (the next call retries). */
 function loadAirports() {
-  airportsPromise ??= fetch('data/airports.json')
-    .then((response) => (response.ok ? response.json() : []))
-    .catch(() => []);
+  airportsPromise ??= fetch(AIRPORTS_URL)
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error('airports'))))
+    .then((rows) => (Array.isArray(rows) ? rows : Promise.reject(new Error('airports'))))
+    .catch(() => {
+      airportsPromise = null;
+      return null;
+    });
   return airportsPromise;
 }
 
@@ -81,6 +93,11 @@ function choose(place) {
   render();
 }
 
+function clearChoice() {
+  state.place = null;
+  render();
+}
+
 function showResults(places) {
   el.results.replaceChildren();
   for (const place of places) {
@@ -97,6 +114,7 @@ function showResults(places) {
     tag.textContent = place.tag;
     button.append(label, tag);
     button.addEventListener('click', () => {
+      seq += 1;
       for (const other of el.results.querySelectorAll('.result')) {
         other.setAttribute('aria-pressed', String(other === button));
       }
@@ -107,43 +125,64 @@ function showResults(places) {
   }
 }
 
-function isExactCode(hit, query) {
-  const q = query.trim().toLowerCase();
-  return hit !== undefined && (hit.ident.toLowerCase() === q || hit.iata.toLowerCase() === q);
+// A typed code is unambiguous enough to skip the address search: a four-letter ICAO ident in
+// any case, or an IATA code typed in capitals. "Ely" or "Ayr" typed as words still search.
+function looksLikeCode(hit, query) {
+  const q = query.trim();
+  if (hit === undefined) {
+    return false;
+  }
+  const icao = q.length >= 4 && hit.ident.toLowerCase() === q.toLowerCase();
+  const iata = hit.iata !== '' && hit.iata === q;
+  return icao || iata;
 }
 
 async function onSearch(event) {
   event.preventDefault();
+  const id = (seq += 1);
   const query = el.query.value.trim();
+  clearChoice();
   showResults([]);
+  el.search.disabled = true;
   say(el.searchMessage, 'Searching…');
-
-  const hits = searchAirports(await loadAirports(), query);
-  const places = hits.map((a) => ({ lat: a.lat, lon: a.lon, label: a.label, tag: 'Airport', approximate: false }));
-
-  let error = null;
-  if (!isExactCode(hits[0], query)) {
-    const found = await geocode(query);
-    if (found.places) {
-      for (const p of found.places) {
-        places.push({
-          lat: p.lat,
-          lon: p.lon,
-          label: p.label,
-          tag: PRECISION_TAG[p.precision],
-          approximate: p.precision === 'postcode' || p.precision === 'area',
-        });
-      }
-    } else {
-      error = found.error;
+  try {
+    const airports = await loadAirports();
+    if (id !== seq) {
+      return;
     }
-  }
+    const hits = airports ? searchAirports(airports, query) : [];
+    const places = hits.map((a) => ({ lat: a.lat, lon: a.lon, label: a.label, tag: 'Airport', approximate: false }));
 
-  showResults(places);
-  if (places.length > 0) {
-    say(el.searchMessage, 'Choose the best match.');
-  } else {
-    say(el.searchMessage, error ?? 'No place found.', true);
+    let error = null;
+    if (!looksLikeCode(hits[0], query)) {
+      const found = await geocode(query);
+      if (id !== seq) {
+        return;
+      }
+      if (found.places) {
+        for (const p of found.places) {
+          places.push({
+            lat: p.lat,
+            lon: p.lon,
+            label: p.label,
+            tag: PRECISION_TAG[p.precision],
+            approximate: p.precision === 'postcode' || p.precision === 'area',
+          });
+        }
+      } else {
+        error = found.error;
+      }
+    }
+
+    showResults(places);
+    const note = airports ? '' : ' Airport codes are unavailable right now.';
+    if (places.length > 0) {
+      say(el.searchMessage, `Choose the best match.${note}`);
+    } else {
+      say(el.searchMessage, `${error ?? 'No place found.'}${note}`, true);
+    }
+  } finally {
+    el.search.disabled = false;
   }
 }
 
@@ -158,9 +197,19 @@ function onLocate() {
     say(el.searchMessage, 'This browser cannot share its location. Search for an address instead.', true);
     return;
   }
+  const id = (seq += 1);
   say(el.searchMessage, 'Finding your location…');
+  const slow = setTimeout(() => {
+    if (id === seq) {
+      say(el.searchMessage, 'Waiting for your browser to allow location access. You can also search for an address.');
+    }
+  }, SLOW_PERMISSION_MS);
   navigator.geolocation.getCurrentPosition(
     ({ coords }) => {
+      clearTimeout(slow);
+      if (id !== seq) {
+        return;
+      }
       const metres = Math.round(coords.accuracy);
       showResults([]);
       say(el.searchMessage, '');
@@ -172,12 +221,19 @@ function onLocate() {
         approximate: metres > APPROXIMATE_M,
       });
     },
-    (error) => say(el.searchMessage, GEO_ERRORS[error.code] ?? GEO_ERRORS[2], true),
+    (error) => {
+      clearTimeout(slow);
+      if (id === seq) {
+        say(el.searchMessage, GEO_ERRORS[error.code] ?? GEO_ERRORS[2], true);
+      }
+    },
     { enableHighAccuracy: true, timeout: 15000 },
   );
 }
 
 function onUseCoords() {
+  seq += 1;
+  clearChoice();
   const parsed = parseLatLon(el.coords.value);
   if (parsed.error) {
     say(el.searchMessage, parsed.error, true);
