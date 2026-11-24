@@ -43,6 +43,20 @@ jobs:
       - name: CA bundle check script tests
         run: python -m unittest discover -s scripts/tests -v
 
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup page unit tests with coverage
+        run: node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-include='site/setup/lib/*.js' 'site/tests/*.test.js'
+
   firmware:
     runs-on: ubuntu-latest
     steps:

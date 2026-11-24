@@ -50,6 +50,17 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 
 After a reset, the device reboots and shows the setup screen immediately (no “Connecting” loop on stale credentials).
 
+## Setup page (metarly.app)
+
+`site/setup/` is the static page the QR code opens: it takes a place (airport code, address, your current location or coordinates) and sends it to the radar. It has no build step and no dependencies. Deploy `site/setup/` at the `/setup/` path of the domain (`site/tests/` and `site/package.json` are not needed). The QR code links to `/setup` without a trailing slash, and the page loads its files by absolute path, so it works whether the host redirects to `/setup/` or serves `index.html` directly.
+
+- **How it works:** the page reads the radar's address and one-time code from the QR link, then navigates your browser to `http://<radar>/location?lat=…&lon=…&token=…` (a navigation, not a `fetch`, because an HTTPS page may not call a plain-HTTP device). It only accepts `*.local` names and private or link-local addresses as the radar address.
+- **Lookups:** airport codes and names are matched in the browser against `site/setup/data/airports.json` (each row is `[ident, iata, name, lat, lon, rank]`; larger airports sort first). Addresses go from your browser to OpenStreetMap's Nominatim (Photon as a fallback), one request per search press. The radar only receives coordinates.
+- **Regenerate the airport list:** `python3 scripts/build_airports_json.py`
+- **Tests** (Node 22+, no install): `node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-include='site/setup/lib/*.js' 'site/tests/*.test.js'`. The logic lives in `site/setup/lib/`; `app.js` only wires it to the page.
+- **Browsers:** any from 2020 or later (the page uses `??=`; older ones show an unstyled, inactive page).
+- **Try it locally:** `python3 -m http.server 8080 --directory site`, then open `http://localhost:8080/setup/?device=<radar-ip>&token=<code>`.
+
 ## Radar display
 
 ### Grid
@@ -159,8 +170,12 @@ lib/
   setup_link/              — Arduino-free setup code, setup URL, coordinate parsing, /location request check and QR encoding (unit tested)
 scripts/
   build_large_airports.py
+  build_airports_json.py   — airports.json for the setup page
   coverage.sh              — host unit tests + coverage gate
   update_ca_bundle.sh / check_ca_bundle.py
+site/
+  setup/                   — static location setup page (index.html, app.js, lib/, data/)
+  tests/                   — Node tests for site/setup/lib
 test/
   fixtures/                — recorded adsb.fi responses
 src/
