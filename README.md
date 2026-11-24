@@ -244,6 +244,8 @@ pio run -t merge -e supermini
 
 Put the board in download mode (hold **BOOT**, tap **RESET**), then flash with Chrome/Edge over USB.
 
+**Two app slots.** The flash is split into two OTA app slots (`app0` and `app1`, 1.94 MiB each) so a new firmware can be written to the idle slot while the running one stays intact. The partition table lives at `0x8000`, so the first flash of any board that ran an older single-slot build must be a full USB flash of the merged image above; an app-only flash will not update the table.
+
 ### CI and releases (GitHub Actions)
 
 | Workflow | When | Output |
