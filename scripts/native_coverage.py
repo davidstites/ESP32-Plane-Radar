@@ -8,6 +8,4 @@ for e in (env, projenv):
         CPPDEFINES=[
             ("ADSB_FIXTURE_DIR", e.StringifyMacro(e.subst("$PROJECT_DIR/test/fixtures"))),
         ],
-        # ricmoo/QRCode typedefs bool for C, which GCC 15 (C23 default) rejects.
-        CFLAGS=["-std=gnu17"],
     )
