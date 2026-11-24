@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://nominatim.openstreetmap.org https://photon.komoot.io; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Set up your radar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <h1>Set up your radar</h1>
+    <p class="lede">Choose where your radar sits. It centers on that spot and shows the aircraft around it.</p>
+
+    <section class="block" aria-labelledby="radar-heading">
+      <h2 id="radar-heading">Your radar</h2>
+      <div class="pair">
+        <div class="field">
+          <label for="device">Radar address</label>
+          <input id="device" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="192.168.1.20">
+          <p class="hint" id="device-hint">Shown on the radar screen, like 192.168.1.20.</p>
+        </div>
+        <div class="field">
+          <label for="code">Setup code</label>
+          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="ABC234">
+          <p class="hint" id="code-hint">Six characters under the QR code.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="where-heading">
+      <h2 id="where-heading">Where is it?</h2>
+      <form id="search-form" class="search" novalidate>
+        <label for="query">Airport code, place or address</label>
+        <div class="search-row">
+          <input id="query" type="search" autocomplete="off" spellcheck="false" placeholder="KSFO or 1 Main St">
+          <button type="submit" class="btn">Search</button>
+        </div>
+      </form>
+      <div class="alt">
+        <button type="button" id="locate" class="btn btn-quiet">Use my current location</button>
+      </div>
+      <details class="coords">
+        <summary>Enter coordinates</summary>
+        <div class="search-row">
+          <label class="sr-only" for="coords">Latitude and longitude</label>
+          <input id="coords" type="text" autocomplete="off" spellcheck="false" placeholder="37.7749, -122.4194">
+          <button type="button" id="use-coords" class="btn">Use these</button>
+        </div>
+      </details>
+      <p class="message" id="search-message" role="status" aria-live="polite"></p>
+      <ul class="results" id="results"></ul>
+    </section>
+
+    <section class="chosen" aria-labelledby="chosen-heading">
+      <svg class="scope" id="scope" viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="ring" cx="60" cy="60" r="56"/>
+        <circle class="ring" cx="60" cy="60" r="42"/>
+        <circle class="ring" cx="60" cy="60" r="28"/>
+        <circle class="ring" cx="60" cy="60" r="14"/>
+        <line class="cross" x1="60" y1="4" x2="60" y2="116"/>
+        <line class="cross" x1="4" y1="60" x2="116" y2="60"/>
+        <path class="sweep" d="M60 60 L60 4 A56 56 0 0 1 99.6 20.4 Z"/>
+        <circle class="blip" cx="60" cy="60" r="4"/>
+      </svg>
+      <div class="chosen-text">
+        <h2 id="chosen-heading">Radar will center on</h2>
+        <p class="chosen-label" id="chosen-label">Nothing chosen yet.</p>
+        <p class="chosen-coords" id="chosen-coords"></p>
+        <p class="caution" id="chosen-caution" hidden>This is an approximate area. Search a street address for a closer match.</p>
+      </div>
+    </section>
+
+    <button type="button" id="send" class="btn btn-primary" disabled>Send to radar</button>
+    <p class="message" id="send-message" role="status" aria-live="polite"></p>
+
+    <p class="privacy">Addresses you search go from your browser to OpenStreetMap's search service. Your radar only receives the coordinates.</p>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
