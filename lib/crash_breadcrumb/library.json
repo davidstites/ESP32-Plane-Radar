@@ -1,0 +1,7 @@
+{
+  "name": "crash_breadcrumb",
+  "version": "1.0.0",
+  "description": "Arduino-free crash breadcrumb record and crash-report JSON formatting",
+  "platforms": "*",
+  "frameworks": "*"
+}
