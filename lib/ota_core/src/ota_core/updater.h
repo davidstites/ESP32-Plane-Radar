@@ -30,7 +30,7 @@ struct CheckResult {
   Outcome outcome;
   /**
    * Why: "not_modified", "installed", a verdictName or sigErrorName, "fetch_failed",
-   * "malformed", "bad_path", "store_unavailable", "begin_failed", "write_failed",
+   * "malformed", "bad_path", "pending_verify", "store_unavailable", "begin_failed", "write_failed",
    * "download_incomplete", "hash_mismatch" or "end_failed". Always a string literal.
    */
   const char* reason;

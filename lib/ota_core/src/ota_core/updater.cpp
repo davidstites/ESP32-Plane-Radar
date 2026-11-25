@@ -41,8 +41,10 @@ BootInfo Updater::onBoot() {
 }
 
 bool Updater::confirmBoot() {
-  if (slots_.runningState() != SlotState::kPendingVerify) return true;
-  if (!state_.ok() || !slots_.markRunningValid()) return false;
+  const bool pendingVerify = slots_.runningState() == SlotState::kPendingVerify;
+  // A valid image that still has its pending record had its floor write interrupted: finish it.
+  if (!pendingVerify && state_.pending() != cfg_.runningBuild) return true;
+  if (!state_.ok() || (pendingVerify && !slots_.markRunningValid())) return false;
   const bool raised = state_.raiseFloor(cfg_.runningBuild);
   const bool cleared = state_.clearPending();
   return raised && cleared;
@@ -93,6 +95,9 @@ bool Updater::fetchCandidate(const char* ownHash, VerifiedOffer& offer, char* fi
 
 CheckResult Updater::check() {
   if (!state_.ok()) return result(Outcome::kFailed, "store_unavailable");
+  // While the running image is unconfirmed the other slot is the only known-good one.
+  // Erasing it now could leave a failed build with nothing to roll back to.
+  if (slots_.runningState() == SlotState::kPendingVerify) return result(Outcome::kFailed, "pending_verify");
 
   char path[kPathMax + 1];
   const int plen = snprintf(path, sizeof(path), "%s/manifest.json", cfg_.basePath);
@@ -169,7 +174,7 @@ CheckResult Updater::install(const uint8_t sha[kShaBytes], uint32_t build, size_
   while (remaining > 0) {
     const size_t want = remaining < kChunkBytes ? remaining : kChunkBytes;
     const int got = http_.readImage(chunk_, want);
-    if (got <= 0) {
+    if (got <= 0 || static_cast<size_t>(got) > want) {
       slots_.abortUpdate();
       return result(Outcome::kFailed, "download_incomplete", build);
     }

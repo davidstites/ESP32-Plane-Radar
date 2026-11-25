@@ -150,6 +150,26 @@ TEST(Confirm, WhenAlreadyValidWritesNothing) {
   EXPECT_TRUE(r.log.empty());
 }
 
+TEST(Confirm, AnAlreadyValidImageStillFinishesAnInterruptedConfirm) {
+  Rig r;
+  r.slots.state = SlotState::kValid;  // marked valid, but the floor write failed last time
+  r.store.uints["pending"] = kRunning;
+  Updater u = r.make();
+  EXPECT_TRUE(u.confirmBoot());
+  EXPECT_EQ(r.log, (Log{"putUInt:floor", "erase:pending"}));
+  EXPECT_EQ(OtaState(r.store).floor(), kRunning);
+  EXPECT_EQ(OtaState(r.store).pending(), 0u);
+}
+
+TEST(Confirm, AnAlreadyValidImageReportsFailureIfTheInterruptedConfirmStillCannotWrite) {
+  Rig r;
+  r.slots.state = SlotState::kValid;
+  r.store.uints["pending"] = kRunning;
+  Updater u = r.make();
+  r.store.failWrites = true;
+  EXPECT_FALSE(u.confirmBoot());
+}
+
 TEST(Confirm, FailureToMarkLeavesFloorAndPendingUnchanged) {
   Rig r;
   r.slots.state = SlotState::kPendingVerify;

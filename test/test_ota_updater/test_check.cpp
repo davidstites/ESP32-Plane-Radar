@@ -379,3 +379,23 @@ TEST(Check, BasePathTooLongForTheManifestPathIsFetchFailed) {
   EXPECT_STREQ(res.reason, "fetch_failed");
   EXPECT_TRUE(r.http.fetchedPaths.empty());
 }
+
+TEST(Check, RefusesToTouchTheSlotsWhileTheRunningImageIsUnconfirmed) {
+  Rig r;
+  r.slots.state = SlotState::kPendingVerify;
+  const CheckResult res = r.run();
+  EXPECT_EQ(res.outcome, Outcome::kFailed);
+  EXPECT_STREQ(res.reason, "pending_verify");
+  EXPECT_TRUE(r.http.fetchedPaths.empty());
+  EXPECT_EQ(r.indexOf("beginUpdate"), r.log.size());
+  EXPECT_EQ(r.storedEtag(), "");
+}
+
+TEST(Check, AnHttpLayerReturningMoreThanAskedIsDownloadIncomplete) {
+  Rig r;
+  r.http.overReturn = 1;
+  const CheckResult res = r.run();
+  EXPECT_EQ(res.outcome, Outcome::kFailed);
+  EXPECT_STREQ(res.reason, "download_incomplete");
+  expectAbortedWithoutActivation(r);
+}

@@ -21,7 +21,10 @@ constexpr char kNamespace[] = "otacore";
 constexpr uint32_t kIdleTimeoutMs = 15000;
 }  // namespace
 
-PrefsStore::PrefsStore() : ok_(prefs_.begin(kNamespace, false)) {}
+bool PrefsStore::begin() {
+  ok_ = prefs_.begin(kNamespace, false);
+  return ok_;
+}
 
 uint32_t PrefsStore::getUInt(const char* key, uint32_t def) { return ok_ ? prefs_.getUInt(key, def) : def; }
 

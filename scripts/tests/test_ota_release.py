@@ -36,7 +36,7 @@ class Env(unittest.TestCase):
             rel.main(["keygen", "--out", self.key])
         self.fw = os.path.join(self.dir, "fw.bin")
         with open(self.fw, "wb") as f:
-            f.write(b"firmware bytes " * 100)
+            f.write(b"firmware bytes " * 100 + b"PLANERADAR-BUILD=8\0")
         with open(self.fw, "rb") as f:
             self.sha = hashlib.sha256(f.read()).digest()
 
@@ -152,6 +152,24 @@ class SignTests(Env):
                       "--channel", "prod", "--out", self.path("x.json")])
 
 
+class BuildMarkerTests(Env):
+    def test_refuses_a_build_number_the_image_does_not_report(self):
+        with self.assertRaises(SystemExit):
+            self.sign(build="9")
+
+    def test_refuses_an_image_without_a_build_marker(self):
+        with open(self.fw, "wb") as f:
+            f.write(b"firmware bytes " * 100)
+        with self.assertRaises(SystemExit):
+            self.sign()
+
+    def test_refuses_an_image_with_conflicting_markers(self):
+        with open(self.fw, "ab") as f:
+            f.write(b"PLANERADAR-BUILD=9\0")
+        with self.assertRaises(SystemExit):
+            self.sign()
+
+
 class PromoteTests(Env):
     def promote(self, firmware=None, rc="rc.json", out="prod.json"):
         rel.main(["promote", "--key", self.key, "--rc-manifest", self.path(rc), "--firmware",
@@ -191,21 +209,26 @@ class PublishTests(Env):
             rel.main(["publish", "--dest", "host:/srv/planeradar", "--dir", self.dir])
         run.assert_not_called()
 
-    def test_with_yes_runs_rsync_once_with_the_dest(self):
+    def test_with_yes_uploads_images_before_manifests(self):
         with mock.patch("subprocess.run") as run:
             run.return_value.returncode = 0
             rel.main(["publish", "--dest", "host:/srv/planeradar", "--dir", self.dir, "--yes"])
-        run.assert_called_once()
-        argv = run.call_args.args[0]
-        self.assertEqual(argv[0], "rsync")
-        self.assertEqual(argv[-1], "host:/srv/planeradar/")
-        self.assertTrue(argv[-2].endswith("/"))
+        self.assertEqual(run.call_count, 2)
+        images, manifests = (c.args[0] for c in run.call_args_list)
+        for argv in (images, manifests):
+            self.assertEqual(argv[0], "rsync")
+            self.assertEqual(argv[-1], "host:/srv/planeradar/")
+            self.assertTrue(argv[-2].endswith("/"))
+        self.assertIn("--exclude=*.json", images)
+        self.assertIn("--include=*.json", manifests)
+        self.assertIn("--exclude=*", manifests)
 
     def test_rsync_failure_exits_nonzero(self):
         with mock.patch("subprocess.run") as run:
             run.return_value.returncode = 23
             with self.assertRaises(SystemExit):
                 rel.main(["publish", "--dest", "h:/p", "--dir", self.dir, "--yes"])
+        run.assert_called_once()  # a failed image upload never reaches the manifests
 
 
 class CoreVectorTests(unittest.TestCase):

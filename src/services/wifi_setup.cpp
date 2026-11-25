@@ -371,6 +371,7 @@ bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
     }
     bootButtonPollLongPress();
     statusScreenConnectingTick();
+    feedLoopWDT();  // a pending OTA build arms the loop watchdog; this wait is not a hang
     delay(config::kWifiConnectingFrameMs);
   }
   return wifiLinkUp();

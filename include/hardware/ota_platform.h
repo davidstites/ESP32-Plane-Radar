@@ -12,10 +12,14 @@ class HTTPClient;
 
 namespace hardware {
 
-/** NVS-backed OTA state ("otacore" namespace). ok() is whether the namespace opened. */
+/**
+ * NVS-backed OTA state ("otacore" namespace). ok() is whether begin() opened the namespace. NVS is
+ * not initialised until Arduino's initArduino(), so begin() must run from setup(), never from a
+ * static constructor.
+ */
 class PrefsStore : public ota_core::IOtaStore {
  public:
-  PrefsStore();
+  bool begin();
   bool ok() const override { return ok_; }
   uint32_t getUInt(const char* key, uint32_t def) override;
   bool putUInt(const char* key, uint32_t v) override;
@@ -25,7 +29,7 @@ class PrefsStore : public ota_core::IOtaStore {
 
  private:
   Preferences prefs_;
-  bool ok_;
+  bool ok_ = false;
 };
 
 /** The two app slots, via esp_ota_* and the Arduino Update class. */

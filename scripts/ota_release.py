@@ -89,6 +89,18 @@ def check_hash(value, what):
         die(f"{what} must be 32 lowercase hex characters")
 
 
+MARKER_RE = re.compile(rb"PLANERADAR-BUILD=([0-9]+)\0")
+
+
+def check_build_marker(path, build):
+    """The board reports the build compiled into the image, so the signed number must match it."""
+    with open(path, "rb") as f:
+        found = {int(m) for m in MARKER_RE.findall(f.read())}
+    if found != {build}:
+        reported = ", ".join(str(b) for b in sorted(found)) or "none"
+        die(f"{path} reports build {reported}, not {build}; rebuild with -DPLANE_RADAR_BUILD={build}")
+
+
 def cmd_sign(args):
     if not 0 <= args.build <= MAX_BUILD:
         die(f"--build must be 0..{MAX_BUILD}")
@@ -108,6 +120,7 @@ def cmd_sign(args):
     for c in candidates:
         check_hash(c, "--candidate")
 
+    check_build_marker(args.firmware, args.build)
     sha = file_sha(args.firmware)
     payload = build_payload(sha, args.build, args.min_build, args.channel, args.device_hash)
     signature = base64.b64encode(load_key(args.key).sign(payload)).decode()
@@ -149,12 +162,19 @@ def cmd_promote(args):
 def cmd_publish(args):
     src = args.dir.rstrip("/") + "/"
     dest = args.dest.rstrip("/") + "/"
-    argv = ["rsync", "-av", "--chmod=F644,D755", src, dest]
+    base = ["rsync", "-av", "--chmod=F644,D755"]
+    # Images first: a manifest must never be visible before the image it points at.
+    steps = [
+        base + ["--exclude=*.json", src, dest],
+        base + ["--include=*/", "--include=*.json", "--exclude=*", src, dest],
+    ]
     if not args.yes:
-        print("Dry run (add --yes to publish):", " ".join(argv))
+        for argv in steps:
+            print("Dry run (add --yes to publish):", " ".join(argv))
         return
-    if subprocess.run(argv).returncode != 0:
-        die("rsync failed")
+    for argv in steps:
+        if subprocess.run(argv).returncode != 0:
+            die("rsync failed")
 
 
 def parser():
