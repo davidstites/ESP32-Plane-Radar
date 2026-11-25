@@ -63,6 +63,18 @@ TEST(State, NinthBuildEvictsOldest) {
   for (uint32_t b = 3; b <= 10; ++b) EXPECT_TRUE(s.isBlacklisted(b)) << b;
 }
 
+TEST(State, BlacklistEntriesListOldestFirst) {
+  FakeStore store;
+  OtaState s(store);
+  uint32_t out[OtaState::kBlacklistCapacity];
+  EXPECT_EQ(s.blacklistEntries(out), 0u);
+  ASSERT_TRUE(s.blacklist(3));
+  ASSERT_TRUE(s.blacklist(4));
+  ASSERT_EQ(s.blacklistEntries(out), 2u);
+  EXPECT_EQ(out[0], 3u);
+  EXPECT_EQ(out[1], 4u);
+}
+
 TEST(State, BlacklistSurvivesANewStateObject) {
   FakeStore store;
   {

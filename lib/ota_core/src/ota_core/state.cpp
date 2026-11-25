@@ -55,6 +55,12 @@ bool OtaState::isBlacklisted(uint32_t build) const {
   return false;
 }
 
+size_t OtaState::blacklistEntries(uint32_t out[kBlacklistCapacity]) const {
+  const Blacklist list = loadBlacklist();
+  memcpy(out, list.builds, list.count * sizeof(uint32_t));
+  return list.count;
+}
+
 bool OtaState::blacklist(uint32_t build) {
   if (!store_.ok()) return false;
   if (isBlacklisted(build)) return true;

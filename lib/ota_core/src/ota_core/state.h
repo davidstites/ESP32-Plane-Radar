@@ -41,6 +41,8 @@ class OtaState {
   bool setRcListed(bool listed);
 
   bool isBlacklisted(uint32_t build) const;
+  /** Copies the blacklisted builds, oldest first, and returns how many (at most 8). */
+  size_t blacklistEntries(uint32_t out[kBlacklistCapacity]) const;
   /** Idempotent per build; the ninth distinct build evicts the oldest. */
   bool blacklist(uint32_t build);
 

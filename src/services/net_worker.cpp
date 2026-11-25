@@ -2,13 +2,16 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_random.h>
 
 #include <net_schedule/scheduler.h>
 #include <radar_geo/radar_geo.h>
 
 #include "config.h"
 #include "services/adsb_client.h"
+#include "services/crash_log.h"
 #include "services/metar_client.h"
+#include "services/ota_service.h"
 #include "services/precip_client.h"
 #include "services/radar_location.h"
 #include "ui/radar_range.h"
@@ -90,18 +93,29 @@ void workerTask(void*) {
 
     switch (scheduler.next(now)) {
       case net_schedule::Action::kPollAdsb:
+        services::crash_log::checkpoint("adsb_poll");
         adsb::fetchUpdate(location::lat(), location::lon(), ui::radar::fetchRadiusKm());
         scheduler.adsbFinished(millis());
         break;
       case net_schedule::Action::kRefreshFeeds:
+        services::crash_log::checkpoint("feeds");
         scheduler.feedsStarted();
         scheduler.feedsFinished(millis(), refreshFeeds());
         break;
-      case net_schedule::Action::kCheckOta:
-        // The update service is wired in by a later commit; until then a due check is a no-op.
+      case net_schedule::Action::kCheckOta: {
+        services::crash_log::checkpoint("ota_check");
+        adsb::closeConnection();  // free the kept-alive TLS session's heap first
         scheduler.otaStarted();
-        scheduler.otaFinished(millis(), true);
+        const ota_core::CheckResult result = services::ota::checkNow();
+        scheduler.setOtaJitterMs(esp_random() % config::kOtaJitterMaxMs);
+        scheduler.otaFinished(millis(), result.outcome != ota_core::Outcome::kFailed);
+        if (result.outcome == ota_core::Outcome::kInstalled) {
+          Serial.println("ota: restarting into the new build");
+          vTaskDelay(pdMS_TO_TICKS(500));
+          ESP.restart();
+        }
         break;
+      }
       case net_schedule::Action::kWait:
         vTaskDelay(pdMS_TO_TICKS(scheduler.sleepMs(now)));
         break;

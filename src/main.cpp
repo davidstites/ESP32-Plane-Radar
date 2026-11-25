@@ -9,8 +9,10 @@
 #include "hardware/boot_button.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
+#include "services/crash_log.h"
 #include "services/metar_client.h"
 #include "services/net_worker.h"
+#include "services/ota_service.h"
 #include "services/precip_client.h"
 #include "services/radar_location.h"
 #include "services/setup_session.h"
@@ -82,10 +84,12 @@ void onBootLongPress() {
 }  // namespace
 
 void setup() {
+  services::crash_log::checkpoint("setup");
   Serial.begin(115200);
   delay(500);
   Serial.println();
   Serial.println("Plane Radar");
+  services::ota::init();
 
   bootButtonInit();
   bootButtonSetLongPressHandler(onBootLongPress);
@@ -108,6 +112,7 @@ void setup() {
 }
 
 void loop() {
+  services::ota::confirmTick();
   handleBootButton();
   wifiLoop();
 

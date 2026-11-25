@@ -4,7 +4,14 @@
 
 #include <driver/gpio.h>
 
+#ifndef PLANE_RADAR_BUILD
+#define PLANE_RADAR_BUILD 1  // release builds override this with -DPLANE_RADAR_BUILD=N
+#endif
+
 namespace config {
+
+/** Monotonic build number compared against the signed manifest's `build`. */
+constexpr uint32_t kFirmwareBuild = PLANE_RADAR_BUILD;
 
 // --- Wi-Fi portal ---
 constexpr char kPortalApName[] = "PlaneRadar-Setup";
@@ -65,6 +72,11 @@ constexpr unsigned long kOtaFirstCheckMs = 5UL * 60UL * 1000UL;
 constexpr unsigned long kOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaJitterMaxMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
+/** A freshly installed build that is not confirmed this long after boot restarts into the old one. */
+constexpr unsigned long kOtaConfirmDeadlineMs = 10UL * 60UL * 1000UL;
+/** Update server and the directory on it holding manifest.json, images and rc/ manifests. */
+constexpr char kOtaHost[] = "metarly.app";
+constexpr char kOtaBasePath[] = "/planeradar";
 /** A range or location change must stay unchanged this long before the feeds refetch. */
 constexpr unsigned long kViewSettleMs = 3UL * 1000UL;
 /** Redraw cadence; aircraft are dead-reckoned along their track/speed so motion
