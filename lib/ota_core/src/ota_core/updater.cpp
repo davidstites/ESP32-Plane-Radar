@@ -48,12 +48,47 @@ bool Updater::confirmBoot() {
   return raised && cleared;
 }
 
-void Updater::rememberEtag() {
-  if (response_.etag[0] != '\0') {
-    state_.setEtag(response_.etag);
+void Updater::rememberEtag(const char* etag) {
+  if (etag[0] != '\0') {
+    state_.setEtag(etag);
   } else {
     state_.clearEtag();
   }
+}
+
+CheckResult Updater::fetchAndInstall(const char* firmware, const uint8_t sha[kShaBytes], uint32_t build,
+                                     bool candidate) {
+  const int64_t length = http_.openImage(firmware);
+  CheckResult res = result(Outcome::kFailed, "fetch_failed", build);
+  if (length == 0) {
+    res = result(Outcome::kFailed, "begin_failed", build);
+  } else if (length > 0) {
+    res = install(sha, build, static_cast<size_t>(length));
+  }
+  http_.closeImage();
+  res.candidate = candidate && res.outcome == Outcome::kInstalled;
+  return res;
+}
+
+// Fetch and vet this board's release-candidate manifest. Any problem means "no candidate":
+// the caller falls back to production. Overwrites response_ and manifest_.
+bool Updater::fetchCandidate(const char* ownHash, VerifiedOffer& offer, char* firmware) {
+  char path[kPathMax + 64];
+  if (!formatRcPath(cfg_.basePath, ownHash, path, sizeof(path))) return false;
+  memset(&response_, 0, sizeof(response_));
+  if (!http_.fetchManifest(path, nullptr, response_)) return false;
+  if (response_.status != 200 || response_.tooLarge) return false;
+  if (parseManifest(response_.body, response_.bodyLen, manifest_) != ParseError::kNone) return false;
+  if (verifyManifest(manifest_.fields(), channelBit(Channel::kRc), cfg_.deviceId, cfg_.keys, cfg_.verify,
+                     offer) != SigError::kNone) {
+    return false;
+  }
+  if (!isAllowedPath(manifest_.firmware)) return false;
+  // Candidates ignore the rollout percentage: being listed is the opt-in.
+  const LocalState local{cfg_.runningBuild, state_.floor(), state_.isBlacklisted(offer.build), true};
+  if (evaluateOffer(Offer{offer.build, offer.minBuild}, local) != Verdict::kAccept) return false;
+  strcpy(firmware, manifest_.firmware);
+  return true;
 }
 
 CheckResult Updater::check() {
@@ -63,10 +98,12 @@ CheckResult Updater::check() {
   const int plen = snprintf(path, sizeof(path), "%s/manifest.json", cfg_.basePath);
   if (plen < 0 || static_cast<size_t>(plen) >= sizeof(path)) return result(Outcome::kFailed, "fetch_failed");
 
+  // A listed board must see the prod manifest every time: its candidate manifest can change
+  // while the prod manifest does not, and a 304 would hide that.
   char etag[OtaState::kEtagMax + 1];
-  const bool haveEtag = state_.etag(etag, sizeof(etag)) > 0;
+  const bool sendEtag = !state_.rcListed() && state_.etag(etag, sizeof(etag)) > 0;
   memset(&response_, 0, sizeof(response_));
-  if (!http_.fetchManifest(path, haveEtag ? etag : nullptr, response_)) {
+  if (!http_.fetchManifest(path, sendEtag ? etag : nullptr, response_)) {
     return result(Outcome::kFailed, "fetch_failed");
   }
   if (response_.status == 304) return result(Outcome::kNotModified, "not_modified");
@@ -76,36 +113,51 @@ CheckResult Updater::check() {
   if (parseManifest(response_.body, response_.bodyLen, manifest_) != ParseError::kNone) {
     return result(Outcome::kRejected, "malformed");
   }
-  VerifiedOffer offer{};
+  VerifiedOffer prod{};
   const SigError sig = verifyManifest(manifest_.fields(), channelBit(Channel::kProd), cfg_.deviceId,
-                                      cfg_.keys, cfg_.verify, offer);
+                                      cfg_.keys, cfg_.verify, prod);
   if (sig != SigError::kNone) return result(Outcome::kRejected, sigErrorName(sig));
 
-  // From here the signed fields are authentic, so the response may be remembered.
-  if (!isAllowedPath(manifest_.firmware)) {
-    rememberEtag();
-    return result(Outcome::kRejected, "bad_path", offer.build);
-  }
-  const LocalState local{cfg_.runningBuild, state_.floor(), state_.isBlacklisted(offer.build),
-                         inRolloutGroup(cfg_.deviceId, manifest_.rollout)};
-  const Verdict verdict = evaluateOffer(Offer{offer.build, offer.minBuild}, local);
-  if (verdict != Verdict::kAccept) {
-    rememberEtag();
+  // From here the signed fields are authentic. Keep what the candidate fetch would overwrite.
+  char prodEtag[sizeof(response_.etag)];
+  char prodFirmware[kPathMax + 1];
+  memcpy(prodEtag, response_.etag, sizeof(prodEtag));
+  memcpy(prodFirmware, manifest_.firmware, sizeof(prodFirmware));
+  const char* candidates[kMaxCandidates];
+  for (size_t i = 0; i < manifest_.candidateCount; ++i) candidates[i] = manifest_.candidates[i];
+  char ownHash[33];
+  deviceHashHex(cfg_.deviceId, ownHash);
+  const bool listed = isListed(candidates, manifest_.candidateCount, ownHash);
+  state_.setRcListed(listed);
+
+  CheckResult prodResult = result(Outcome::kRejected, "bad_path", prod.build);
+  bool prodAccepted = false;
+  if (isAllowedPath(prodFirmware)) {
+    const LocalState local{cfg_.runningBuild, state_.floor(), state_.isBlacklisted(prod.build),
+                           inRolloutGroup(cfg_.deviceId, manifest_.rollout)};
+    const Verdict verdict = evaluateOffer(Offer{prod.build, prod.minBuild}, local);
+    prodAccepted = verdict == Verdict::kAccept;
     const bool quiet = verdict == Verdict::kAlreadyCurrent || verdict == Verdict::kNotInRollout;
-    return result(quiet ? Outcome::kNoUpdate : Outcome::kRejected, verdictName(verdict), offer.build);
+    prodResult = result(quiet ? Outcome::kNoUpdate : Outcome::kRejected, verdictName(verdict), prod.build);
   }
 
-  const char* firmware = manifest_.firmware;
-  const int64_t length = http_.openImage(firmware);
-  if (length < 0) {
-    http_.closeImage();
-    return result(Outcome::kFailed, "fetch_failed", offer.build);
+  VerifiedOffer rc{};
+  char rcFirmware[kPathMax + 1];
+  const bool rcAccepted = listed && fetchCandidate(ownHash, rc, rcFirmware);
+
+  CheckResult final = prodResult;
+  switch (chooseInstall(prodAccepted, prod.build, rcAccepted, rc.build)) {
+    case InstallChoice::kCandidate:
+      final = fetchAndInstall(rcFirmware, rc.sha256, rc.build, true);
+      break;
+    case InstallChoice::kProduction:
+      final = fetchAndInstall(prodFirmware, prod.sha256, prod.build, false);
+      break;
+    case InstallChoice::kNone:
+      break;
   }
-  CheckResult installed = result(Outcome::kFailed, "begin_failed", offer.build);
-  if (length > 0) installed = install(offer.sha256, offer.build, static_cast<size_t>(length));
-  http_.closeImage();
-  if (installed.outcome == Outcome::kInstalled) rememberEtag();
-  return installed;
+  if (final.outcome != Outcome::kFailed) rememberEtag(prodEtag);
+  return final;
 }
 
 CheckResult Updater::install(const uint8_t sha[kShaBytes], uint32_t build, size_t length) {

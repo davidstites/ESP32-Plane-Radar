@@ -67,6 +67,11 @@ constexpr size_t kBigImageBytes = 5000;
 constexpr uint8_t kBigImageByte(size_t i) { return static_cast<uint8_t>((i * 7 + 3) & 0xFF); }
 constexpr char kBigSigProd[] = "dTS5Ze63qyWJHeKO08j1J4KDGYKvhkl2YxVv/GtcoO8Z0lblq9u+3tKgbq/GyREpiUUzRQjz9Z/b3hCWowE7DQ==";
 constexpr uint32_t kBigRcBuild = 9;
+constexpr char kBigSigProdBuild9[] = "I/tcadElJKmV5uC8uIZgbRooSFegOTHudXyd0ecLa3M/eEO8N+yQz1eCbLNPkvyHrYnd7OMXvh2HY8V6HbWaDQ==";
 constexpr char kBigSigRc[] = "0KvFwq183ajD30w8QnwOpRdAvg+RS4PrqL4V/iA0GBiOCJiKradJv/awzbBS8nmZDgtZ1zQx5XflGZz0V4oGBw==";
+
+constexpr uint32_t kOldRcBuild = 7;
+constexpr char kSigOldRc[] = "oroobueSfRyoW8nzmJ2yRbh1vcmUvsoMa2WCd3GYdfeaMbZMYWMLjEA4gDnRP1+QiFTxw9POv1hBstG37BRXAw==";
+constexpr char kSigRcOtherBoard[] = "4HHUeOGVR9S3pclwv+3sTE5wPciQLei6Xyj7WWNb7F1cvmCmZbraoYOo4KGGFh30+SqYDJpI9OaCu5MbT2TAAA==";
 
 }  // namespace ota_vectors

@@ -10,6 +10,7 @@ constexpr const char* kPendingKey = "pending";
 constexpr const char* kBlacklistKey = "blacklist";
 constexpr const char* kEtagKey = "etag";
 constexpr const char* kBootedKey = "booted";
+constexpr const char* kRcListedKey = "rclisted";
 }  // namespace
 
 uint32_t OtaState::floor() const { return store_.getUInt(kFloorKey, 0); }
@@ -29,6 +30,14 @@ bool OtaState::clearPending() { return store_.ok() && store_.erase(kPendingKey);
 uint32_t OtaState::bootedBuild() const { return store_.getUInt(kBootedKey, 0); }
 
 bool OtaState::setBootedBuild(uint32_t build) { return store_.ok() && store_.putUInt(kBootedKey, build); }
+
+bool OtaState::rcListed() const { return store_.getUInt(kRcListedKey, 0) != 0; }
+
+bool OtaState::setRcListed(bool listed) {
+  if (!store_.ok()) return false;
+  if (rcListed() == listed) return true;
+  return store_.putUInt(kRcListedKey, listed ? 1 : 0);
+}
 
 OtaState::Blacklist OtaState::loadBlacklist() const {
   Blacklist list{};

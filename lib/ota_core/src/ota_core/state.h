@@ -35,6 +35,11 @@ class OtaState {
   uint32_t bootedBuild() const;
   bool setBootedBuild(uint32_t build);
 
+  /** Whether the last verified production manifest listed this board as a release candidate. */
+  bool rcListed() const;
+  /** Writes only when the value changes, to spare the flash. */
+  bool setRcListed(bool listed);
+
   bool isBlacklisted(uint32_t build) const;
   /** Idempotent per build; the ninth distinct build evicts the oldest. */
   bool blacklist(uint32_t build);

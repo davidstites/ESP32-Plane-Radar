@@ -379,7 +379,7 @@ int unpackneg(gf r[4], const u8 p[32]) {
 
 }  // namespace
 
-void tweetnaclSha512(uint8_t out[64], const uint8_t* m, size_t n) {
+inline void tweetnaclSha512(uint8_t out[64], const uint8_t* m, size_t n) {
   u8 h[64], x[256];
   size_t b = n;
   for (int i = 0; i < 64; i++) h[i] = iv[i];

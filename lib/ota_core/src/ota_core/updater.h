@@ -59,8 +59,11 @@ class Updater {
 
   /**
    * One scheduled check: fetch the production manifest, verify it, decide, and install into
-   * the other slot if it is a newer build. The ETag is remembered only once a signature
-   * verified, so a failed or forged response is always retried. Never raises the floor.
+   * the other slot if it is a newer build. When that manifest lists this board's hash, the
+   * board's release-candidate manifest is fetched too and wins if it is strictly newer; a bad
+   * or missing candidate never blocks a production install. The ETag is remembered only once
+   * a signature verified and the outcome is final, so a failed or forged response is always
+   * retried. Never raises the floor.
    *
    * The updater keeps its manifest and read buffers as members (about 4 KB) so a caller with
    * a small task stack must allocate the Updater statically or on the heap.
@@ -79,7 +82,10 @@ class Updater {
   uint8_t chunk_[kChunkBytes];
 
   CheckResult install(const uint8_t sha[kShaBytes], uint32_t build, size_t length);
-  void rememberEtag();
+  CheckResult fetchAndInstall(const char* firmware, const uint8_t sha[kShaBytes], uint32_t build,
+                              bool candidate);
+  bool fetchCandidate(const char* ownHash, VerifiedOffer& offer, char* firmware);
+  void rememberEtag(const char* etag);
 };
 
 }  // namespace ota_core

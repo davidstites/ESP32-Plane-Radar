@@ -75,7 +75,15 @@ def main() -> None:
     text += "constexpr uint8_t kBigImageByte(size_t i) { return static_cast<uint8_t>((i * 7 + 3) & 0xFF); }\n"
     text += f'constexpr char kBigSigProd[] = "{b64sig(signer, big_prod)}";\n'
     text += f'constexpr uint32_t kBigRcBuild = {build + 1};\n'
+    big_prod9 = payload(big_sha, build + 1, min_build, 0x01, bytes(32))
+    text += f'constexpr char kBigSigProdBuild9[] = "{b64sig(signer, big_prod9)}";\n'
     text += f'constexpr char kBigSigRc[] = "{b64sig(signer, big_rc)}";\n'
+    # Release-candidate variants for the same small image: an older rc build, and an rc
+    # signed for a different board.
+    other_id = hashlib.sha256(DEVID_PREFIX + bytes.fromhex("010203040506")).digest()
+    text += f"\nconstexpr uint32_t kOldRcBuild = {build - 1};\n"
+    text += f'constexpr char kSigOldRc[] = "{b64sig(signer, payload(sha, build - 1, min_build, 0x02, device_id))}";\n'
+    text += f'constexpr char kSigRcOtherBoard[] = "{b64sig(signer, payload(sha, build, min_build, 0x02, other_id))}";\n'
     text += "\n}  // namespace ota_vectors\n"
     Path(__file__).resolve().parent.parent.joinpath("test/support/ota_vectors.h").write_text(text)
 
