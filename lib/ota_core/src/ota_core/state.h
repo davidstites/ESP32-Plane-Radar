@@ -31,6 +31,10 @@ class OtaState {
   bool setPending(uint32_t build);
   bool clearPending();
 
+  /** The build that last ran on this board; a change means the image was replaced out of band. */
+  uint32_t bootedBuild() const;
+  bool setBootedBuild(uint32_t build);
+
   bool isBlacklisted(uint32_t build) const;
   /** Idempotent per build; the ninth distinct build evicts the oldest. */
   bool blacklist(uint32_t build);

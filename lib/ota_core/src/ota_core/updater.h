@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "ota_core/hal.h"
+#include "ota_core/manifest.h"
 #include "ota_core/state.h"
 #include "ota_core/types.h"
 
@@ -23,11 +24,24 @@ struct BootInfo {
   uint32_t rolledBackBuild;
 };
 
+enum class Outcome : uint8_t { kNotModified, kNoUpdate, kRejected, kFailed, kInstalled };
+
+struct CheckResult {
+  Outcome outcome;
+  /**
+   * Why: "not_modified", "installed", a verdictName or sigErrorName, "fetch_failed",
+   * "malformed", "bad_path", "store_unavailable", "begin_failed", "write_failed",
+   * "download_incomplete", "hash_mismatch" or "end_failed". Always a string literal.
+   */
+  const char* reason;
+  uint32_t build;  // the offered build once its manifest verified, else 0
+  bool candidate;  // the installed image came from this board's release-candidate manifest
+};
+
 class Updater {
  public:
-  // `http` is unused until the check path lands, but the constructor is final.
-  Updater(const Config& cfg, IOtaStore& store, IOtaSlots& slots, IOtaHttp& /*http*/)
-      : cfg_(cfg), state_(store), slots_(slots) {}
+    Updater(const Config& cfg, IOtaStore& store, IOtaSlots& slots, IOtaHttp& http)
+      : cfg_(cfg), state_(store), slots_(slots), http_(http) {}
 
   /**
    * Reconcile the stored pending build with what is actually running. A pending build that
@@ -43,10 +57,29 @@ class Updater {
    */
   bool confirmBoot();
 
+  /**
+   * One scheduled check: fetch the production manifest, verify it, decide, and install into
+   * the other slot if it is a newer build. The ETag is remembered only once a signature
+   * verified, so a failed or forged response is always retried. Never raises the floor.
+   *
+   * The updater keeps its manifest and read buffers as members (about 4 KB) so a caller with
+   * a small task stack must allocate the Updater statically or on the heap.
+   */
+  CheckResult check();
+
  private:
+  static constexpr size_t kChunkBytes = 2048;
+
   Config cfg_;
   OtaState state_;
   IOtaSlots& slots_;
+  IOtaHttp& http_;
+  ManifestResponse response_;
+  Manifest manifest_;
+  uint8_t chunk_[kChunkBytes];
+
+  CheckResult install(const uint8_t sha[kShaBytes], uint32_t build, size_t length);
+  void rememberEtag();
 };
 
 }  // namespace ota_core

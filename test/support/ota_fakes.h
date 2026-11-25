@@ -134,6 +134,7 @@ class FakeHttp : public ota_core::IOtaHttp {
   std::string image;
   size_t imageLimit = static_cast<size_t>(-1);  // readImage returns -1 after this many bytes
   std::vector<std::string> openedPaths;
+  std::vector<size_t> readCaps;  // the buffer size of each readImage call
   bool closed = false;
 
   bool fetchManifest(const char* path, const char* ifNoneMatch, ota_core::ManifestResponse& out) override {
@@ -156,6 +157,7 @@ class FakeHttp : public ota_core::IOtaHttp {
     return openResult;
   }
   int readImage(uint8_t* buf, size_t cap) override {
+    readCaps.push_back(cap);
     if (pos_ >= imageLimit) return -1;
     const size_t end = std::min(image.size(), imageLimit);
     const size_t n = std::min(cap, end - std::min(pos_, end));

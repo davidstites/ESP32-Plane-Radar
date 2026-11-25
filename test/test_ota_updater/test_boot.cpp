@@ -35,6 +35,7 @@ bool verifyNever(const uint8_t*, const uint8_t*, const uint8_t*, size_t) { retur
 
 TEST(Boot, CleanBootReportsNothing) {
   Rig r;
+  r.store.uints["booted"] = kRunning;
   r.cfg.verify = verifyNever;
   Updater u = r.make();
   const BootInfo info = u.onBoot();
@@ -46,6 +47,7 @@ TEST(Boot, CleanBootReportsNothing) {
 
 TEST(Boot, PendingForRunningBuildIsPendingVerify) {
   Rig r;
+  r.store.uints["booted"] = kRunning;
   r.slots.state = SlotState::kPendingVerify;
   r.store.uints["pending"] = kRunning;
   Updater u = r.make();
@@ -93,6 +95,29 @@ TEST(Boot, RollbackWithStoreNotOkDoesNothing) {
   const BootInfo info = u.onBoot();
   EXPECT_FALSE(info.rolledBack);  // cannot record it, so it is not reported as handled
   EXPECT_EQ(r.store.writeCount, 0);
+}
+
+TEST(Boot, FirstBootOfADifferentBuildForgetsTheEtag) {
+  // A USB flash of another build keeps NVS, so a stored ETag would answer 304 forever.
+  Rig r;
+  r.store.uints["booted"] = 6;
+  ASSERT_TRUE(OtaState(r.store).setEtag("\"v8\""));
+  Updater u = r.make();
+  u.onBoot();
+  char buf[16];
+  EXPECT_EQ(OtaState(r.store).etag(buf, sizeof(buf)), 0u);
+  EXPECT_EQ(r.store.uints["booted"], kRunning);
+  EXPECT_EQ(OtaState(r.store).floor(), 0u);
+}
+
+TEST(Boot, SameBuildKeepsTheEtag) {
+  Rig r;
+  r.store.uints["booted"] = kRunning;
+  ASSERT_TRUE(OtaState(r.store).setEtag("\"v8\""));
+  Updater u = r.make();
+  u.onBoot();
+  char buf[16];
+  EXPECT_EQ(OtaState(r.store).etag(buf, sizeof(buf)), 4u);
 }
 
 TEST(Boot, OnBootNeverRaisesTheFloor) {
