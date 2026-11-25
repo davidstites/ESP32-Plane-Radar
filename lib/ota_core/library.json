@@ -1,0 +1,10 @@
+{
+  "name": "ota_core",
+  "version": "1.0.0",
+  "description": "Arduino-free OTA update logic: signatures, policy, manifest parsing, state and the updater",
+  "platforms": "*",
+  "frameworks": "*",
+  "dependencies": {
+    "bblanchon/ArduinoJson": "^7.4.2"
+  }
+}
