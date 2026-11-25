@@ -110,7 +110,7 @@ class SignTests(Env):
 
     def test_firmware_path_defaults_to_the_image_name_under_the_base(self):
         m = self.sign()
-        self.assertEqual(m["firmware"], "/planeradar/fw.bin")
+        self.assertEqual(m["firmware"], "/ota/planeradar/fw.bin")
         m = self.sign("--firmware-path", "/planeradar/firmware-8.bin")
         self.assertEqual(m["firmware"], "/planeradar/firmware-8.bin")
 
@@ -121,6 +121,14 @@ class SignTests(Env):
         base = self.sign()
         self.assertEqual(m["signature"], base["signature"])  # extras do not change the signature
         self.assertNotIn("rollout", base)
+
+    def test_firmware_path_must_pass_the_devices_allowlist(self):
+        for bad in ("fw.bin", "/", "/a/../b.bin", "/a//b.bin", "http://evil/x.bin", "//evil/x.bin",
+                    "/fw.bin?x=1", "/fw.bin#f", "/a b.bin", "/caf\u00e9.bin", "/" + "a" * 96):
+            with self.subTest(path=bad):
+                with self.assertRaises(SystemExit):
+                    self.sign("--firmware-path", bad)
+        self.sign("--firmware-path", "/" + "a" * 95)  # exactly the 96-byte limit passes
 
     def test_rollout_must_be_0_to_100(self):
         for bad in ("101", "-1"):
@@ -171,9 +179,9 @@ class BuildMarkerTests(Env):
 
 
 class PromoteTests(Env):
-    def promote(self, firmware=None, rc="rc.json", out="prod.json"):
-        rel.main(["promote", "--key", self.key, "--rc-manifest", self.path(rc), "--firmware",
-                  firmware or self.fw, "--out", self.path(out)])
+    def promote(self, *extra, firmware=None, rc="rc.json", out="prod.json"):
+        rel.main(["promote", "--key", self.key, "--rc-manifest", self.path(rc), "--device-hash", HASH,
+                  "--firmware", firmware or self.fw, "--out", self.path(out)] + list(extra))
         with open(self.path(out)) as f:
             return json.load(f)
 
@@ -197,6 +205,26 @@ class PromoteTests(Env):
             self.promote(firmware=other)
         self.assertFalse(os.path.exists(self.path("prod.json")))
 
+    def test_refuses_an_rc_manifest_whose_signature_is_not_ours_for_that_board(self):
+        self.sign("--device-hash", HASH, channel="rc", out="rc.json")
+        with self.assertRaises(SystemExit):
+            rel.main(["promote", "--key", self.key, "--rc-manifest", self.path("rc.json"), "--device-hash",
+                      OTHER, "--firmware", self.fw, "--out", self.path("prod.json")])
+        self.assertFalse(os.path.exists(self.path("prod.json")))
+
+    def test_refuses_a_tampered_rc_signature(self):
+        m = self.sign("--device-hash", HASH, channel="rc", out="rc.json")
+        m["build"] = 9
+        with open(self.path("rc.json"), "w") as f:
+            json.dump(m, f)
+        with self.assertRaises(SystemExit):
+            self.promote()
+
+    def test_refuses_a_firmware_path_the_device_would_reject(self):
+        self.sign("--device-hash", HASH, channel="rc", out="rc.json")
+        with self.assertRaises(SystemExit):
+            self.promote("--firmware-path", "/a/../b.bin")
+
     def test_refuses_a_prod_manifest_as_input(self):
         self.sign(out="rc.json")  # actually prod
         with self.assertRaises(SystemExit):
@@ -219,6 +247,8 @@ class PublishTests(Env):
             self.assertEqual(argv[0], "rsync")
             self.assertEqual(argv[-1], "host:/srv/planeradar/")
             self.assertTrue(argv[-2].endswith("/"))
+        for argv in (images, manifests):
+            self.assertFalse([a for a in argv if a.startswith("--chmod")])  # macOS rsync rejects it
         self.assertIn("--exclude=*.json", images)
         self.assertIn("--include=*.json", manifests)
         self.assertIn("--exclude=*", manifests)

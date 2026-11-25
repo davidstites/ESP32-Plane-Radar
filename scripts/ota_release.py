@@ -22,6 +22,7 @@ import struct
 import subprocess
 import sys
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -31,7 +32,7 @@ MAX_BUILD = 999999
 MAX_CANDIDATES = 8
 MAX_MANIFEST_BYTES = 1024
 HASH_RE = re.compile(r"^[0-9a-f]{32}$")
-DEFAULT_BASE = "/planeradar"
+DEFAULT_BASE = "/ota/planeradar"
 
 
 def die(message):
@@ -101,6 +102,19 @@ def check_build_marker(path, build):
         die(f"{path} reports build {reported}, not {build}; rebuild with -DPLANE_RADAR_BUILD={build}")
 
 
+PATH_RE = re.compile(r"^/[A-Za-z0-9._/-]*$")
+
+
+def check_firmware_path(path):
+    """Mirror ota_core::isAllowedPath so a manifest the board would refuse is never published."""
+    parts = path.split("/")[1:]
+    ok = (2 <= len(path) <= 96 and PATH_RE.match(path)
+          and all(p != ".." for p in parts) and "" not in parts[:-1])
+    if not ok:
+        die(f"--firmware-path {path!r} would be refused by the board (letters, digits, . _ - /; "
+            "absolute, no '..' or '//', 2-96 bytes)")
+
+
 def cmd_sign(args):
     if not 0 <= args.build <= MAX_BUILD:
         die(f"--build must be 0..{MAX_BUILD}")
@@ -121,6 +135,8 @@ def cmd_sign(args):
         check_hash(c, "--candidate")
 
     check_build_marker(args.firmware, args.build)
+    firmware_path = args.firmware_path or f"{DEFAULT_BASE}/{os.path.basename(args.firmware)}"
+    check_firmware_path(firmware_path)
     sha = file_sha(args.firmware)
     payload = build_payload(sha, args.build, args.min_build, args.channel, args.device_hash)
     signature = base64.b64encode(load_key(args.key).sign(payload)).decode()
@@ -130,7 +146,7 @@ def cmd_sign(args):
         "sha256": sha.hex(),
         "channel": args.channel,
         "signature": signature,
-        "firmware": args.firmware_path or f"{DEFAULT_BASE}/{os.path.basename(args.firmware)}",
+        "firmware": firmware_path,
     }
     if args.rollout is not None:
         manifest["rollout"] = args.rollout
@@ -144,9 +160,18 @@ def cmd_promote(args):
         rc = json.load(f)
     if rc.get("channel") != "rc":
         die("--rc-manifest is not an rc manifest")
+    check_hash(args.device_hash, "--device-hash")
     sha = file_sha(args.firmware)
     if sha.hex() != rc["sha256"]:
         die("firmware does not match the rc manifest's sha256; promote the exact bytes that were tested")
+    rc_payload = build_payload(sha, rc["build"], rc["min_build"], "rc", args.device_hash)
+    try:
+        load_key(args.key).public_key().verify(base64.b64decode(rc["signature"], validate=True), rc_payload)
+    except (InvalidSignature, ValueError, KeyError):
+        die("the rc manifest's signature is not valid for this key and --device-hash; "
+            "refusing to promote something we did not sign")
+    firmware_path = args.firmware_path or rc["firmware"]
+    check_firmware_path(firmware_path)
     payload = build_payload(sha, rc["build"], rc["min_build"], "prod", None)
     manifest = {
         "build": rc["build"],
@@ -154,7 +179,7 @@ def cmd_promote(args):
         "sha256": rc["sha256"],
         "channel": "prod",
         "signature": base64.b64encode(load_key(args.key).sign(payload)).decode(),
-        "firmware": args.firmware_path or rc["firmware"],
+        "firmware": firmware_path,
     }
     write_manifest(args.out, manifest)
 
@@ -162,7 +187,7 @@ def cmd_promote(args):
 def cmd_publish(args):
     src = args.dir.rstrip("/") + "/"
     dest = args.dest.rstrip("/") + "/"
-    base = ["rsync", "-av", "--chmod=F644,D755"]
+    base = ["rsync", "-av"]  # macOS rsync rejects --chmod; the server dirs are setgid www-data
     # Images first: a manifest must never be visible before the image it points at.
     steps = [
         base + ["--exclude=*.json", src, dest],
@@ -201,6 +226,7 @@ def parser():
     r = sub.add_parser("promote")
     r.add_argument("--key", required=True)
     r.add_argument("--rc-manifest", required=True)
+    r.add_argument("--device-hash", required=True, help="the board the rc manifest was signed for")
     r.add_argument("--firmware", required=True)
     r.add_argument("--firmware-path")
     r.add_argument("--out", required=True)

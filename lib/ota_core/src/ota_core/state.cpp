@@ -11,6 +11,9 @@ constexpr const char* kBlacklistKey = "blacklist";
 constexpr const char* kEtagKey = "etag";
 constexpr const char* kBootedKey = "booted";
 constexpr const char* kRcListedKey = "rclisted";
+constexpr const char* kActivatedKey = "activated";
+constexpr const char* kSoftKey = "soft";
+constexpr const char* kSoftSeenKey = "softseen";
 }  // namespace
 
 uint32_t OtaState::floor() const { return store_.getUInt(kFloorKey, 0); }
@@ -25,7 +28,32 @@ uint32_t OtaState::pending() const { return store_.getUInt(kPendingKey, 0); }
 
 bool OtaState::setPending(uint32_t build) { return store_.ok() && store_.putUInt(kPendingKey, build); }
 
-bool OtaState::clearPending() { return store_.ok() && store_.erase(kPendingKey); }
+bool OtaState::clearPending() {
+  if (!store_.ok()) return false;
+  const bool erased = store_.erase(kPendingKey);
+  const bool activatedGone = activated() == 0 || store_.erase(kActivatedKey);
+  return erased && activatedGone;
+}
+
+uint32_t OtaState::activated() const { return store_.getUInt(kActivatedKey, 0); }
+
+bool OtaState::setActivated(uint32_t build) { return store_.ok() && store_.putUInt(kActivatedKey, build); }
+
+uint32_t OtaState::softFailed() const { return store_.getUInt(kSoftKey, 0); }
+
+bool OtaState::setSoftFailed(uint32_t build) { return store_.ok() && store_.putUInt(kSoftKey, build); }
+
+bool OtaState::clearSoftFailed() {
+  return store_.ok() && (softFailed() == 0 || store_.erase(kSoftKey));
+}
+
+uint32_t OtaState::softForgiven() const { return store_.getUInt(kSoftSeenKey, 0); }
+
+bool OtaState::setSoftForgiven(uint32_t build) { return store_.ok() && store_.putUInt(kSoftSeenKey, build); }
+
+bool OtaState::clearSoftForgiven() {
+  return store_.ok() && (softForgiven() == 0 || store_.erase(kSoftSeenKey));
+}
 
 uint32_t OtaState::bootedBuild() const { return store_.getUInt(kBootedKey, 0); }
 

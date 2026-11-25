@@ -31,13 +31,28 @@ BootInfo Updater::onBoot() {
 
   const uint32_t pending = state_.pending();
   if (pending != 0 && pending != cfg_.runningBuild) {
-    if (slots_.hasInvalidSlot() && state_.blacklist(pending)) {
-      info.rolledBack = true;
-      info.rolledBackBuild = pending;
+    // Only an install that reached endUpdate can have been rolled back; an older rollback's
+    // invalid slot says nothing about a pending record left by a power cut or a USB flash.
+    if (slots_.hasInvalidSlot() && state_.activated() == pending) {
+      const bool unhealthy = state_.softFailed() == pending;
+      if (unhealthy && state_.softForgiven() != pending && state_.setSoftForgiven(pending)) {
+        info.rolledBack = true;
+        info.forgiven = true;
+        info.rolledBackBuild = pending;
+      } else if (state_.blacklist(pending)) {
+        info.rolledBack = true;
+        info.rolledBackBuild = pending;
+      }
     }
+    state_.clearSoftFailed();
     state_.clearPending();
   }
   return info;
+}
+
+bool Updater::noteUnhealthy() {
+  if (slots_.runningState() != SlotState::kPendingVerify) return false;
+  return state_.setSoftFailed(cfg_.runningBuild);
 }
 
 bool Updater::confirmBoot() {
@@ -47,6 +62,7 @@ bool Updater::confirmBoot() {
   if (!state_.ok() || (pendingVerify && !slots_.markRunningValid())) return false;
   const bool raised = state_.raiseFloor(cfg_.runningBuild);
   const bool cleared = state_.clearPending();
+  state_.clearSoftForgiven();  // a confirmed build starts with a clean slate
   return raised && cleared;
 }
 
@@ -60,6 +76,11 @@ void Updater::rememberEtag(const char* etag) {
 
 CheckResult Updater::fetchAndInstall(const char* firmware, const uint8_t sha[kShaBytes], uint32_t build,
                                      bool candidate) {
+  const bool sameAsLastFailure = failCount_ > 0 && memcmp(failSha_, sha, kShaBytes) == 0;
+  if (sameAsLastFailure && skipsLeft_ > 0) {
+    --skipsLeft_;
+    return result(Outcome::kFailed, "backoff", build);
+  }
   const int64_t length = http_.openImage(firmware);
   CheckResult res = result(Outcome::kFailed, "fetch_failed", build);
   if (length == 0) {
@@ -69,6 +90,20 @@ CheckResult Updater::fetchAndInstall(const char* firmware, const uint8_t sha[kSh
   }
   http_.closeImage();
   res.candidate = candidate && res.outcome == Outcome::kInstalled;
+
+  const bool deterministic = res.outcome == Outcome::kFailed && (strcmp(res.reason, "hash_mismatch") == 0 ||
+                                                                strcmp(res.reason, "begin_failed") == 0);
+  if (deterministic) {
+    if (!sameAsLastFailure) {
+      memcpy(failSha_, sha, kShaBytes);
+      failCount_ = 0;
+    }
+    if (failCount_ < 255) ++failCount_;
+    if (failCount_ >= kBackoffAfter) skipsLeft_ = kBackoffSkips;
+  } else {
+    failCount_ = 0;
+    skipsLeft_ = 0;
+  }
   return res;
 }
 
@@ -204,6 +239,8 @@ CheckResult Updater::install(const uint8_t sha[kShaBytes], uint32_t build, size_
     state_.clearPending();
     return result(Outcome::kFailed, "end_failed", build);
   }
+  // Best effort: without it a rollback of this build is treated as stale (retried once more).
+  state_.setActivated(build);
   return result(Outcome::kInstalled, "installed", build);
 }
 

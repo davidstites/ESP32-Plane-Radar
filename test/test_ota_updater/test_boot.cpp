@@ -61,6 +61,7 @@ TEST(Boot, PendingForRunningBuildIsPendingVerify) {
 TEST(Boot, PendingForOtherBuildWithInvalidSlotRollsBackAndBlacklists) {
   Rig r;
   r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
   r.slots.invalidSlot = true;
   Updater u = r.make();
   const BootInfo info = u.onBoot();
@@ -71,6 +72,119 @@ TEST(Boot, PendingForOtherBuildWithInvalidSlotRollsBackAndBlacklists) {
   EXPECT_TRUE(s.isBlacklisted(9));
   EXPECT_EQ(s.pending(), 0u);
   EXPECT_EQ(s.floor(), 0u);
+}
+
+TEST(Boot, AnInstallThatWasNeverActivatedIsStaleEvenWithALeftoverInvalidSlot) {
+  // Power cut between setPending and endUpdate, with an old rollback's invalid slot still marked.
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  const BootInfo info = u.onBoot();
+  EXPECT_FALSE(info.rolledBack);
+  EXPECT_FALSE(OtaState(r.store).isBlacklisted(9));
+  EXPECT_EQ(OtaState(r.store).pending(), 0u);
+}
+
+TEST(Boot, ClearingPendingAlsoClearsItsActivationRecord) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  u.onBoot();
+  EXPECT_EQ(r.store.uints.count("activated"), 0u);
+}
+
+TEST(Boot, FirstUnhealthyRollbackIsForgivenNotBlacklisted) {
+  // The build ran but never confirmed (e.g. the ADS-B API was down): retry it once.
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.store.uints["soft"] = 9;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  const BootInfo info = u.onBoot();
+  EXPECT_TRUE(info.rolledBack);
+  EXPECT_TRUE(info.forgiven);
+  EXPECT_EQ(info.rolledBackBuild, 9u);
+  OtaState s(r.store);
+  EXPECT_FALSE(s.isBlacklisted(9));
+  EXPECT_EQ(s.pending(), 0u);
+  EXPECT_EQ(r.store.uints["softseen"], 9u);
+  EXPECT_EQ(r.store.uints.count("soft"), 0u);
+}
+
+TEST(Boot, SecondUnhealthyRollbackOfTheSameBuildIsBlacklisted) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.store.uints["soft"] = 9;
+  r.store.uints["softseen"] = 9;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  const BootInfo info = u.onBoot();
+  EXPECT_TRUE(info.rolledBack);
+  EXPECT_FALSE(info.forgiven);
+  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
+  EXPECT_EQ(r.store.uints.count("soft"), 0u);
+}
+
+TEST(Boot, ACrashOrHangRollbackIsBlacklistedEvenAfterAForgiveness) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.store.uints["softseen"] = 9;  // no "soft" record: the board did not restart itself
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  EXPECT_FALSE(u.onBoot().forgiven);
+  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
+}
+
+TEST(Boot, ForgivenessFallsBackToBlacklistWhenItCannotBeRecorded) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.store.uints["soft"] = 9;
+  r.slots.invalidSlot = true;
+  r.store.failWrites = true;  // nothing can be written, so nothing is claimed as handled
+  Updater u = r.make();
+  const BootInfo info = u.onBoot();
+  EXPECT_FALSE(info.forgiven);
+  EXPECT_FALSE(info.rolledBack);
+}
+
+TEST(Confirm, ConfirmingClearsTheForgivenessRecord) {
+  Rig r;
+  r.slots.state = SlotState::kPendingVerify;
+  r.store.uints["pending"] = kRunning;
+  r.store.uints["softseen"] = kRunning;
+  Updater u = r.make();
+  ASSERT_TRUE(u.confirmBoot());
+  EXPECT_EQ(r.store.uints.count("softseen"), 0u);
+}
+
+TEST(NoteUnhealthy, RecordsTheRunningBuildWhileItIsUnconfirmed) {
+  Rig r;
+  r.slots.state = SlotState::kPendingVerify;
+  Updater u = r.make();
+  EXPECT_TRUE(u.noteUnhealthy());
+  EXPECT_EQ(r.store.uints["soft"], kRunning);
+}
+
+TEST(NoteUnhealthy, DoesNothingForAnAlreadyConfirmedImage) {
+  Rig r;
+  Updater u = r.make();
+  EXPECT_FALSE(u.noteUnhealthy());
+  EXPECT_EQ(r.store.writeCount, 0);
+}
+
+TEST(NoteUnhealthy, ReportsAFailedWrite) {
+  Rig r;
+  r.slots.state = SlotState::kPendingVerify;
+  r.store.failWrites = true;
+  Updater u = r.make();
+  EXPECT_FALSE(u.noteUnhealthy());
 }
 
 TEST(Boot, PendingForOtherBuildWithoutInvalidSlotIsStaleAndCleared) {

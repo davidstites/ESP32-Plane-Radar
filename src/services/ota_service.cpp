@@ -66,8 +66,8 @@ void init() {
                 hash, runningSlotLabel(), s_store.ok() ? "ok" : "UNAVAILABLE");
   Serial.printf("ota: %s\n", kBuildMarker);
   if (info.rolledBack) {
-    Serial.printf("ota: build %u failed and was rolled back; blacklisted\n",
-                  static_cast<unsigned>(info.rolledBackBuild));
+    Serial.printf("ota: build %u was rolled back; %s\n", static_cast<unsigned>(info.rolledBackBuild),
+                  info.forgiven ? "it never became healthy, will retry once" : "blacklisted");
   }
   if (s_pending_verify) {
     Serial.println("ota: new build awaiting confirmation");
@@ -104,6 +104,7 @@ void confirmTick() {
   }
   if (millis() >= config::kOtaConfirmDeadlineMs) {
     Serial.println("ota: new build never became healthy; restarting into the old one");
+    s_updater->noteUnhealthy();
     esp_restart();
   }
 }

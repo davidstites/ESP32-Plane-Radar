@@ -29,7 +29,20 @@ class OtaState {
   /** Build written to the other slot and awaiting its first boot; 0 when none. */
   uint32_t pending() const;
   bool setPending(uint32_t build);
+  /** Clears the pending build and its activation record. */
   bool clearPending();
+  /** Build whose slot endUpdate() switched to; 0 when none. Without it a rollback is not blamed on pending. */
+  uint32_t activated() const;
+  bool setActivated(uint32_t build);
+
+  /** Build that restarted itself because it never became healthy (not a crash); 0 when none. */
+  uint32_t softFailed() const;
+  bool setSoftFailed(uint32_t build);
+  bool clearSoftFailed();
+  /** Build already forgiven one unhealthy rollback; a second one blacklists it. */
+  uint32_t softForgiven() const;
+  bool setSoftForgiven(uint32_t build);
+  bool clearSoftForgiven();
 
   /** The build that last ran on this board; a change means the image was replaced out of band. */
   uint32_t bootedBuild() const;

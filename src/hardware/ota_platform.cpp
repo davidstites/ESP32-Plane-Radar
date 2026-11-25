@@ -108,6 +108,7 @@ bool TlsHttp::fetchManifest(const char* path, const char* ifNoneMatch, ota_core:
     end();
     return false;
   }
+  http_->useHTTP10(true);  // HTTP/1.0 responses are never chunked; the body is read raw below
   if (ifNoneMatch != nullptr && ifNoneMatch[0] != '\0') http_->addHeader("If-None-Match", ifNoneMatch);
   const int code = http_->GET();
   if (code <= 0) {

@@ -15,6 +15,8 @@ TEST(Check, ControlInstalls) {
   EXPECT_EQ(r.slots.endCalls, 1);
   EXPECT_EQ(std::string(r.slots.written.begin(), r.slots.written.end()), kImage);
   EXPECT_EQ(r.store.uints["pending"], 8u);
+  EXPECT_EQ(r.store.uints["activated"], 8u);
+  EXPECT_LT(r.indexOf("endUpdate"), r.indexOf("putUInt:activated"));
   EXPECT_LT(r.indexOf("beginUpdate"), r.indexOf("putUInt:pending"));
   EXPECT_LT(r.indexOf("putUInt:pending"), r.indexOf("endUpdate"));
   EXPECT_EQ(r.http.openedPaths, std::vector<std::string>{"/planeradar/firmware-8.bin"});
@@ -398,4 +400,54 @@ TEST(Check, AnHttpLayerReturningMoreThanAskedIsDownloadIncomplete) {
   EXPECT_EQ(res.outcome, Outcome::kFailed);
   EXPECT_STREQ(res.reason, "download_incomplete");
   expectAbortedWithoutActivation(r);
+}
+
+TEST(Check, AServerSideBadImageBacksOffInsteadOfRedownloadingEveryRetry) {
+  Rig r;
+  r.http.image = "planeradar test firmware imagX";  // right length, wrong bytes: hash_mismatch
+  Updater u(r.cfg, r.store, r.slots, r.http);
+  EXPECT_STREQ(u.check().reason, "hash_mismatch");
+  EXPECT_STREQ(u.check().reason, "hash_mismatch");
+  for (int i = 0; i < 8; ++i) {
+    const CheckResult skipped = u.check();
+    EXPECT_EQ(skipped.outcome, Outcome::kFailed);
+    EXPECT_STREQ(skipped.reason, "backoff");
+  }
+  EXPECT_EQ(r.http.openedPaths.size(), 2u);  // no download while backing off
+  r.http.image = kImage;                     // the server fixed the image
+  const CheckResult fixed = u.check();
+  EXPECT_EQ(fixed.outcome, Outcome::kInstalled);
+  EXPECT_EQ(r.http.openedPaths.size(), 3u);
+}
+
+TEST(Check, ABeginFailureAlsoBacksOff) {
+  Rig r;
+  r.slots.beginFails = true;
+  Updater u(r.cfg, r.store, r.slots, r.http);
+  EXPECT_STREQ(u.check().reason, "begin_failed");
+  EXPECT_STREQ(u.check().reason, "begin_failed");
+  EXPECT_STREQ(u.check().reason, "backoff");
+}
+
+TEST(Check, TransientDownloadFailuresNeverBackOff) {
+  Rig r;
+  r.http.imageLimit = 10;  // stalls mid-stream every time
+  Updater u(r.cfg, r.store, r.slots, r.http);
+  for (int i = 0; i < 4; ++i) EXPECT_STREQ(u.check().reason, "download_incomplete");
+}
+
+TEST(Check, ADifferentBadImageStartsItsOwnCount) {
+  Rig r;
+  r.http.image = "planeradar test firmware imagX";
+  Updater u(r.cfg, r.store, r.slots, r.http);
+  u.check();
+  u.check();
+  EXPECT_STREQ(u.check().reason, "backoff");
+  Options o;
+  o.sha = v::kBigShaHex;
+  o.signature = v::kBigSigProd;
+  r.serve(body(o));
+  r.http.image = std::string(v::kBigImageBytes, 'x');  // also wrong: a fresh hash_mismatch
+  r.http.openResult = static_cast<int64_t>(r.http.image.size());
+  EXPECT_STREQ(u.check().reason, "hash_mismatch");
 }

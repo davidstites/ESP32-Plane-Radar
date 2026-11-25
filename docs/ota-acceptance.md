@@ -17,3 +17,9 @@ Flashing the C3: hold BOOT, tap RESET, release BOOT fully, tap RESET again.
 | 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | pending |
 
 Not covered by this list and worth a look: power cut mid-download, crash before `setup()`.
+
+## Added after the final review (unverified on hardware)
+
+- The manifest GET now uses HTTP/1.0 (`useHTTP10`) so a chunked response cannot appear; confirm a 200 and a 304 against the real host still parse.
+- An unhealthy restart (deadline, not a crash) is forgiven once; confirm the log line `will retry once` after pulling the network during the confirm window, then `blacklisted` on the second.
+- Base path is `/ota/planeradar` (manifest, `firmware-N.bin`, `rc/<hash>.json`).

@@ -22,6 +22,7 @@ struct BootInfo {
   bool pendingVerify;  // the running image is new and not yet confirmed
   bool rolledBack;     // an update failed and the bootloader reverted it
   uint32_t rolledBackBuild;
+  bool forgiven;  // the rollback was an unhealthy restart (not a crash) and the build is not blacklisted
 };
 
 enum class Outcome : uint8_t { kNotModified, kNoUpdate, kRejected, kFailed, kInstalled };
@@ -30,7 +31,7 @@ struct CheckResult {
   Outcome outcome;
   /**
    * Why: "not_modified", "installed", a verdictName or sigErrorName, "fetch_failed",
-   * "malformed", "bad_path", "pending_verify", "store_unavailable", "begin_failed", "write_failed",
+   * "malformed", "bad_path", "pending_verify", "backoff", "store_unavailable", "begin_failed", "write_failed",
    * "download_incomplete", "hash_mismatch" or "end_failed". Always a string literal.
    */
   const char* reason;
@@ -56,6 +57,13 @@ class Updater {
    * floor rises. Returns true without writing anything when the image is already valid.
    */
   bool confirmBoot();
+
+  /**
+   * The running, unconfirmed image never became healthy and the caller is about to restart
+   * into the old one. Records that, so the rollback is not held against a build that merely
+   * ran while a dependency (the ADS-B API) was down. Returns false if nothing was recorded.
+   */
+  bool noteUnhealthy();
 
   /**
    * One scheduled check: fetch the production manifest, verify it, decide, and install into
@@ -86,6 +94,14 @@ class Updater {
                               bool candidate);
   bool fetchCandidate(const char* ownHash, VerifiedOffer& offer, char* firmware);
   void rememberEtag(const char* etag);
+
+  // A server-side bad image (hash_mismatch, begin_failed) would otherwise be re-downloaded on
+  // every 30-minute retry. After two in a row for the same signed hash, skip the next few.
+  static constexpr uint8_t kBackoffAfter = 2;
+  static constexpr uint8_t kBackoffSkips = 8;
+  uint8_t failSha_[kShaBytes] = {};
+  uint8_t failCount_ = 0;
+  uint8_t skipsLeft_ = 0;
 };
 
 }  // namespace ota_core

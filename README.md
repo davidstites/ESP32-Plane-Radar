@@ -189,7 +189,7 @@ src/
 
 ## Over-the-air updates
 
-Boards check `https://metarly.app/planeradar/manifest.json` every 6-12 hours (first check 5 minutes after boot) and install a newer build into the idle app slot.
+Boards check `https://metarly.app/ota/planeradar/manifest.json` every 6-12 hours (first check 5 minutes after boot) and install a newer build into the idle app slot.
 
 - **Signed.** Each manifest carries an Ed25519 signature over the image's SHA-256, build number, minimum build and channel. Boards hold up to three public keys (`lib/ota_core/src/ota_core/keys.h`); every slot ships zeroed, so a board built without a release key accepts no update.
 - **Safe.** The image is hashed before the slot is activated, builds below the stored floor are refused (the floor only rises once a new build has proven itself), and a build that fails to boot or never reaches a healthy state within 10 minutes is rolled back by the bootloader and blacklisted.

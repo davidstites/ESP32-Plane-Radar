@@ -76,7 +76,7 @@ constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
 constexpr unsigned long kOtaConfirmDeadlineMs = 10UL * 60UL * 1000UL;
 /** Update server and the directory on it holding manifest.json, images and rc/ manifests. */
 constexpr char kOtaHost[] = "metarly.app";
-constexpr char kOtaBasePath[] = "/planeradar";
+constexpr char kOtaBasePath[] = "/ota/planeradar";
 /** A range or location change must stay unchanged this long before the feeds refetch. */
 constexpr unsigned long kViewSettleMs = 3UL * 1000UL;
 /** Redraw cadence; aircraft are dead-reckoned along their track/speed so motion
