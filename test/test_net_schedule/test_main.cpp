@@ -226,6 +226,36 @@ TEST(SchedulerOta, FeedsAndAdsbStillRunAroundIt) {
   EXPECT_EQ(s.next(0), Action::kPollAdsb);
 }
 
+TEST(SchedulerOta, ProbingChecksSoonAfterBootInsteadOfAtTheFirstDelay) {
+  Scheduler s(kConfig);
+  s.setOtaProbing(true);
+  s.adsbFinished(net_schedule::kOtaProbeFirstMs - 1);
+  EXPECT_NE(s.next(net_schedule::kOtaProbeFirstMs - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(net_schedule::kOtaProbeFirstMs), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, ProbingRetriesEveryMinuteEvenAfterAnApparentSuccess) {
+  Scheduler s(kConfig);
+  s.setOtaProbing(true);
+  s.otaStarted();
+  s.otaFinished(1000, true);
+  s.adsbFinished(1000 + net_schedule::kOtaProbeRetryMs - 1);
+  EXPECT_NE(s.next(1000 + net_schedule::kOtaProbeRetryMs - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(1000 + net_schedule::kOtaProbeRetryMs), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, LeavingProbeModeRestoresTheNormalInterval) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(0);
+  s.setOtaProbing(true);
+  s.otaStarted();
+  s.setOtaProbing(false);
+  s.otaFinished(1000, true);
+  s.adsbFinished(1000 + kOtaInterval - 1);
+  EXPECT_NE(s.next(1000 + kOtaInterval - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(1000 + kOtaInterval), Action::kCheckOta);
+}
+
 TEST(RetryBackoff, GrowsLinearlyAndNeverNegative) {
   EXPECT_EQ(net_schedule::retryBackoffMs(0), 0u);
   EXPECT_EQ(net_schedule::retryBackoffMs(-1), 0u);

@@ -192,7 +192,7 @@ src/
 Boards check `https://metarly.app/ota/planeradar/manifest.json` every 6-12 hours (first check 5 minutes after boot) and install a newer build into the idle app slot.
 
 - **Signed.** Each manifest carries an Ed25519 signature over the image's SHA-256, build number, minimum build and channel. Boards hold up to three public keys (`lib/ota_core/src/ota_core/keys.h`); every slot ships zeroed, so a board built without a release key accepts no update.
-- **Safe.** The image is hashed before the slot is activated, builds below the stored floor are refused (the floor only rises once a new build has proven itself), and a build that fails to boot or never reaches a healthy state within 10 minutes is rolled back by the bootloader and blacklisted.
+- **Safe.** The image is hashed before the slot is activated, builds below the stored floor are refused (the floor only rises once a new build has proven itself), and a build that crashes or hangs is rolled back by the bootloader and blacklisted, while one that merely cannot confirm (Wi-Fi down, host unreachable; confirmation is one successful manifest fetch) is rolled back after 10 minutes without being blacklisted.
 - **Staged.** `rollout` (0-100) in the manifest gates boards by a stable per-board bucket.
 - **Release candidates.** List a board's 32-hex device hash (printed at boot as `ota: build N, device <hash>`) under `candidates` in the production manifest and publish a per-board manifest at `rc/<hash>.json`. The board installs the candidate if it is newer than production; `promote` later re-signs the same bytes as production.
 - **Crash log.** `GET http://plane-radar.local/api/crash-log` shows the last checkpoint before the previous reset, the reset reason, the pending build and the blacklist.

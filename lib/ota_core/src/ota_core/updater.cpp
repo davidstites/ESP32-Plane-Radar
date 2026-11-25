@@ -34,12 +34,7 @@ BootInfo Updater::onBoot() {
     // Only an install that reached endUpdate can have been rolled back; an older rollback's
     // invalid slot says nothing about a pending record left by a power cut or a USB flash.
     if (slots_.hasInvalidSlot() && state_.activated() == pending) {
-      const bool unhealthy = state_.softFailed() == pending;
-      if (state_.netDown() == pending) {
-        info.rolledBack = true;
-        info.forgiven = true;
-        info.rolledBackBuild = pending;
-      } else if (unhealthy && state_.softForgiven() != pending && state_.setSoftForgiven(pending)) {
+      if (state_.unconfirmed() == pending) {
         info.rolledBack = true;
         info.forgiven = true;
         info.rolledBackBuild = pending;
@@ -48,16 +43,28 @@ BootInfo Updater::onBoot() {
         info.rolledBackBuild = pending;
       }
     }
-    state_.clearSoftFailed();
-    state_.clearNetDown();
+    state_.clearUnconfirmed();
     state_.clearPending();
   }
   return info;
 }
 
-bool Updater::noteUnhealthy(bool networkDown) {
+bool Updater::noteUnhealthy() {
   if (slots_.runningState() != SlotState::kPendingVerify) return false;
-  return networkDown ? state_.setNetDown(cfg_.runningBuild) : state_.setSoftFailed(cfg_.runningBuild);
+  return state_.setUnconfirmed(cfg_.runningBuild);
+}
+
+bool Updater::manifestPath(char* path, size_t cap) const {
+  const int n = snprintf(path, cap, "%s/manifest.json", cfg_.basePath);
+  return n >= 0 && static_cast<size_t>(n) < cap;
+}
+
+bool Updater::probe() {
+  if (!state_.ok()) return false;
+  char path[kPathMax + 1];
+  if (!manifestPath(path, sizeof(path))) return false;
+  memset(&response_, 0, sizeof(response_));
+  return http_.fetchManifest(path, nullptr, response_) && response_.status == 200;
 }
 
 bool Updater::confirmBoot() {
@@ -67,7 +74,6 @@ bool Updater::confirmBoot() {
   if (!state_.ok() || (pendingVerify && !slots_.markRunningValid())) return false;
   const bool raised = state_.raiseFloor(cfg_.runningBuild);
   const bool cleared = state_.clearPending();
-  state_.clearSoftForgiven();  // a confirmed build starts with a clean slate
   return raised && cleared;
 }
 
@@ -140,8 +146,7 @@ CheckResult Updater::check() {
   if (slots_.runningState() == SlotState::kPendingVerify) return result(Outcome::kFailed, "pending_verify");
 
   char path[kPathMax + 1];
-  const int plen = snprintf(path, sizeof(path), "%s/manifest.json", cfg_.basePath);
-  if (plen < 0 || static_cast<size_t>(plen) >= sizeof(path)) return result(Outcome::kFailed, "fetch_failed");
+  if (!manifestPath(path, sizeof(path))) return result(Outcome::kFailed, "fetch_failed");
 
   // A listed board must see the prod manifest every time: its candidate manifest can change
   // while the prod manifest does not, and a 304 would hide that.

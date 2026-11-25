@@ -17,10 +17,21 @@ void init();
 /** Run one update check. The caller must have closed other TLS sessions first. */
 ota_core::CheckResult checkNow();
 
+/** True while the running build is new and not yet confirmed. */
+bool pendingVerify();
+
 /**
- * Call from loop(). A freshly installed build is confirmed once WiFi is up and an ADS-B poll
- * has succeeded; if that has not happened kOtaConfirmDeadlineMs after boot the board
- * restarts and the bootloader rolls back. While unconfirmed the loop watchdog is armed.
+ * Health probe for an unconfirmed build, run on the network task where checkNow() would run: one
+ * GET of the manifest from the OTA host. On success the build is confirmed (floor raised, marked
+ * valid, loop watchdog off) and true is returned. Only a crash or hang blacklists a build;
+ * failing to confirm never does.
+ */
+bool probeNow();
+
+/**
+ * Call from loop(). Arms the loop watchdog once while unconfirmed, and if kOtaConfirmDeadlineMs
+ * pass after boot without a confirmation, restarts so the bootloader rolls back (recorded as
+ * "unconfirmed", never blacklisted).
  */
 void confirmTick();
 

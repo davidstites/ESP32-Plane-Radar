@@ -25,6 +25,9 @@ struct Config {
 
 /** Longest sleep, so a view change or Wi-Fi state flip is noticed promptly. */
 constexpr unsigned long kMaxSleepMs = 250;
+/** While a new build awaits confirmation the OTA slot runs a health probe: soon, and every minute. */
+constexpr unsigned long kOtaProbeFirstMs = 20000;
+constexpr unsigned long kOtaProbeRetryMs = 60000;
 /** Attempts a feed makes within one refresh before giving up until the retry gap. */
 constexpr int kFeedAttempts = 3;
 
@@ -64,6 +67,8 @@ class Scheduler {
 
   /** Extra delay added to the next successful-check gap, so a fleet does not check in step. */
   void setOtaJitterMs(unsigned long jitter_ms) { ota_jitter_ms_ = jitter_ms; }
+  /** Probe mode: the OTA slot runs fast health probes until switched off, success or not. */
+  void setOtaProbing(bool probing) { ota_probing_ = probing; }
   /** Call when a check starts; none is due again until otaFinished(). */
   void otaStarted() { ota_running_ = true; }
   /** Success waits ota_interval_ms plus the jitter; failure waits ota_retry_ms. */
@@ -84,6 +89,7 @@ class Scheduler {
   bool view_pending_ = false;
   unsigned long view_changed_ms_ = 0;
   bool ota_running_ = false;
+  bool ota_probing_ = false;
   bool ota_ever_ = false;
   unsigned long ota_jitter_ms_ = 0;
   unsigned long last_ota_ms_ = 0;

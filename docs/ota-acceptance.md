@@ -21,5 +21,5 @@ Not covered by this list and worth a look: power cut mid-download, crash before 
 ## Added after the final review (unverified on hardware)
 
 - The manifest GET now uses HTTP/1.0 (`useHTTP10`) so a chunked response cannot appear; confirm a 200 and a 304 against the real host still parse.
-- An unhealthy restart (deadline, not a crash) is forgiven once; confirm the log line `will retry once` after pulling the network during the confirm window, then `blacklisted` on the second.
+- Health = Wi-Fi up and one 200 from the manifest on the OTA host, probed 20 s after boot and every minute. Confirm `ota: health probe ok` then `ota: new build confirmed`; then pull the network and confirm a new build restarts at 10 minutes with `not blacklisted` and is offered again. A crash or hang (e.g. a deliberate `abort()` in `loop()`) must be blacklisted.
 - Base path is `/ota/planeradar` (manifest, `firmware-N.bin`, `rc/<hash>.json`).

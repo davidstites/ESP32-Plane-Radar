@@ -22,7 +22,7 @@ struct BootInfo {
   bool pendingVerify;  // the running image is new and not yet confirmed
   bool rolledBack;     // an update failed and the bootloader reverted it
   uint32_t rolledBackBuild;
-  bool forgiven;  // the rollback was an unhealthy restart (not a crash) and the build is not blacklisted
+  bool forgiven;  // the build restarted for want of confirmation, not a crash: not blacklisted
 };
 
 enum class Outcome : uint8_t { kNotModified, kNoUpdate, kRejected, kFailed, kInstalled };
@@ -59,13 +59,18 @@ class Updater {
   bool confirmBoot();
 
   /**
-   * The running, unconfirmed image never became healthy and the caller is about to restart
-   * into the old one. Records that, so the rollback is not held against a build that merely
-   * ran while the network was out. `networkDown` (Wi-Fi not connected) is never held against the
-   * build, however often it happens; any other unhealthy restart is forgiven once. A crash or
-   * hang leaves no record and is always blacklisted. Returns false if nothing was recorded.
+   * The running, unconfirmed image never confirmed and the caller is about to restart into the
+   * old one. Records that, so the rollback is not held against the build: only a crash or hang
+   * (which leaves no record) blacklists. Returns false if nothing was recorded.
    */
-  bool noteUnhealthy(bool networkDown);
+  bool noteUnhealthy();
+
+  /**
+   * Health probe for an unconfirmed image: one GET of the production manifest, true on HTTP 200.
+   * It proves Wi-Fi, DNS, TLS and the host, i.e. that this build can fetch its own fix. It never
+   * installs, ignores the ETag, and does not read the body. Call it where check() would run.
+   */
+  bool probe();
 
   /**
    * One scheduled check: fetch the production manifest, verify it, decide, and install into
@@ -101,6 +106,7 @@ class Updater {
   // every 30-minute retry. After two in a row for the same signed hash, skip the next few.
   static constexpr uint8_t kBackoffAfter = 2;
   static constexpr uint8_t kBackoffSkips = 8;
+  bool manifestPath(char* path, size_t cap) const;
   uint8_t failSha_[kShaBytes] = {};
   uint8_t failCount_ = 0;
   uint8_t skipsLeft_ = 0;

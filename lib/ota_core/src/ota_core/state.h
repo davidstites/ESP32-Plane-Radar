@@ -35,18 +35,13 @@ class OtaState {
   uint32_t activated() const;
   bool setActivated(uint32_t build);
 
-  /** Build that restarted itself because it never became healthy (not a crash); 0 when none. */
-  uint32_t softFailed() const;
-  bool setSoftFailed(uint32_t build);
-  bool clearSoftFailed();
-  /** Build that restarted itself with Wi-Fi down: the environment's fault, never held against it. */
-  uint32_t netDown() const;
-  bool setNetDown(uint32_t build);
-  bool clearNetDown();
-  /** Build already forgiven one unhealthy rollback; a second one blacklists it. */
-  uint32_t softForgiven() const;
-  bool setSoftForgiven(uint32_t build);
-  bool clearSoftForgiven();
+  /**
+   * Build that restarted itself because it never confirmed (Wi-Fi down, host unreachable): the
+   * environment's fault, never held against it. A crash or hang leaves no such record. 0 when none.
+   */
+  uint32_t unconfirmed() const;
+  bool setUnconfirmed(uint32_t build);
+  bool clearUnconfirmed();
 
   /** The build that last ran on this board; a change means the image was replaced out of band. */
   uint32_t bootedBuild() const;

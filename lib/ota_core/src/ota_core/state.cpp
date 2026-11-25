@@ -12,9 +12,7 @@ constexpr const char* kEtagKey = "etag";
 constexpr const char* kBootedKey = "booted";
 constexpr const char* kRcListedKey = "rclisted";
 constexpr const char* kActivatedKey = "activated";
-constexpr const char* kSoftKey = "soft";
-constexpr const char* kSoftSeenKey = "softseen";
-constexpr const char* kNetDownKey = "netdown";
+constexpr const char* kUnconfirmedKey = "unconfirmed";
 }  // namespace
 
 uint32_t OtaState::floor() const { return store_.getUInt(kFloorKey, 0); }
@@ -40,26 +38,12 @@ uint32_t OtaState::activated() const { return store_.getUInt(kActivatedKey, 0); 
 
 bool OtaState::setActivated(uint32_t build) { return store_.ok() && store_.putUInt(kActivatedKey, build); }
 
-uint32_t OtaState::softFailed() const { return store_.getUInt(kSoftKey, 0); }
+uint32_t OtaState::unconfirmed() const { return store_.getUInt(kUnconfirmedKey, 0); }
 
-bool OtaState::setSoftFailed(uint32_t build) { return store_.ok() && store_.putUInt(kSoftKey, build); }
+bool OtaState::setUnconfirmed(uint32_t build) { return store_.ok() && store_.putUInt(kUnconfirmedKey, build); }
 
-bool OtaState::clearSoftFailed() {
-  return store_.ok() && (softFailed() == 0 || store_.erase(kSoftKey));
-}
-
-uint32_t OtaState::netDown() const { return store_.getUInt(kNetDownKey, 0); }
-
-bool OtaState::setNetDown(uint32_t build) { return store_.ok() && store_.putUInt(kNetDownKey, build); }
-
-bool OtaState::clearNetDown() { return store_.ok() && (netDown() == 0 || store_.erase(kNetDownKey)); }
-
-uint32_t OtaState::softForgiven() const { return store_.getUInt(kSoftSeenKey, 0); }
-
-bool OtaState::setSoftForgiven(uint32_t build) { return store_.ok() && store_.putUInt(kSoftSeenKey, build); }
-
-bool OtaState::clearSoftForgiven() {
-  return store_.ok() && (softForgiven() == 0 || store_.erase(kSoftSeenKey));
+bool OtaState::clearUnconfirmed() {
+  return store_.ok() && (unconfirmed() == 0 || store_.erase(kUnconfirmedKey));
 }
 
 uint32_t OtaState::bootedBuild() const { return store_.getUInt(kBootedKey, 0); }

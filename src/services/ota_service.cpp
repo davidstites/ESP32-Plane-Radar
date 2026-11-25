@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Ed25519.h>
+#include <atomic>
 #include <WiFi.h>
 #include <esp_ota_ops.h>
 
@@ -9,7 +10,6 @@
 #include "hardware/ota_platform.h"
 #include "ota_core/keys.h"
 #include "ota_core/signature.h"
-#include "services/adsb_client.h"
 
 // Arduino marks the running app valid before setup() unless this returns true. We confirm
 // only after a health check (confirmTick), so a bad build falls back to the old slot.
@@ -34,15 +34,8 @@ hardware::PrefsStore s_store;
 hardware::EspSlots s_slots;
 hardware::TlsHttp s_http;
 ota_core::Updater* s_updater = nullptr;  // heap: it carries ~4 KB of buffers
-bool s_pending_verify = false;
+std::atomic<bool> s_pending_verify{false};
 bool s_wdt_armed = false;
-
-bool adsbHasSucceeded() {
-  unsigned long last_update_ms = 0;
-  services::adsb::Aircraft unused;
-  services::adsb::snapshotAircraft(&unused, 0, &last_update_ms);
-  return last_update_ms != 0;
-}
 
 }  // namespace
 
@@ -61,7 +54,7 @@ void init() {
   char hash[33];
   ota_core::deviceHashHex(cfg.deviceId, hash);
   const ota_core::BootInfo info = s_updater->onBoot();
-  s_pending_verify = info.pendingVerify;
+  s_pending_verify.store(info.pendingVerify);
   Serial.printf("ota: build %u, device %s, slot %s, store %s\n", static_cast<unsigned>(cfg.runningBuild),
                 hash, runningSlotLabel(), s_store.ok() ? "ok" : "UNAVAILABLE");
   Serial.printf("ota: %s\n", kBuildMarker);
@@ -69,7 +62,7 @@ void init() {
     Serial.printf("ota: build %u was rolled back; %s\n", static_cast<unsigned>(info.rolledBackBuild),
                   info.forgiven ? "not blacklisted, it never became healthy (network)" : "blacklisted");
   }
-  if (s_pending_verify) {
+  if (s_pending_verify.load()) {
     Serial.println("ota: new build awaiting confirmation");
   }
 }
@@ -84,8 +77,25 @@ ota_core::CheckResult checkNow() {
   return res;
 }
 
+bool pendingVerify() { return s_pending_verify.load(); }
+
+bool probeNow() {
+  if (!s_pending_verify.load() || s_updater == nullptr) {
+    return false;
+  }
+  const bool reached = WiFi.status() == WL_CONNECTED && s_updater->probe();
+  Serial.printf("ota: health probe %s\n", reached ? "ok" : "failed");
+  if (!reached || !s_updater->confirmBoot()) {
+    return false;
+  }
+  s_pending_verify.store(false);
+  disableLoopWDT();
+  Serial.println("ota: new build confirmed");
+  return true;
+}
+
 void confirmTick() {
-  if (!s_pending_verify || s_updater == nullptr) {
+  if (!s_pending_verify.load() || s_updater == nullptr) {
     return;
   }
   if (!s_wdt_armed) {
@@ -94,17 +104,9 @@ void confirmTick() {
     enableLoopWDT();  // a hung loop() resets, and the bootloader then rolls back
     s_wdt_armed = true;
   }
-  if (WiFi.status() == WL_CONNECTED && adsbHasSucceeded()) {
-    if (s_updater->confirmBoot()) {
-      s_pending_verify = false;
-      disableLoopWDT();
-      Serial.println("ota: new build confirmed");
-    }
-    return;
-  }
   if (millis() >= config::kOtaConfirmDeadlineMs) {
-    Serial.println("ota: new build never became healthy; restarting into the old one");
-    s_updater->noteUnhealthy(WiFi.status() != WL_CONNECTED);
+    Serial.println("ota: new build never confirmed; restarting into the old one (not blacklisted)");
+    s_updater->noteUnhealthy();
     esp_restart();
   }
 }

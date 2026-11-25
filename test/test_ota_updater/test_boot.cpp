@@ -96,126 +96,65 @@ TEST(Boot, ClearingPendingAlsoClearsItsActivationRecord) {
   EXPECT_EQ(r.store.uints.count("activated"), 0u);
 }
 
-TEST(Boot, FirstUnhealthyRollbackIsForgivenNotBlacklisted) {
-  // The build ran but never confirmed (e.g. the ADS-B API was down): retry it once.
-  Rig r;
-  r.store.uints["pending"] = 9;
-  r.store.uints["activated"] = 9;
-  r.store.uints["soft"] = 9;
-  r.slots.invalidSlot = true;
-  Updater u = r.make();
-  const BootInfo info = u.onBoot();
-  EXPECT_TRUE(info.rolledBack);
-  EXPECT_TRUE(info.forgiven);
-  EXPECT_EQ(info.rolledBackBuild, 9u);
-  OtaState s(r.store);
-  EXPECT_FALSE(s.isBlacklisted(9));
-  EXPECT_EQ(s.pending(), 0u);
-  EXPECT_EQ(r.store.uints["softseen"], 9u);
-  EXPECT_EQ(r.store.uints.count("soft"), 0u);
-}
-
-TEST(Boot, SecondUnhealthyRollbackOfTheSameBuildIsBlacklisted) {
-  Rig r;
-  r.store.uints["pending"] = 9;
-  r.store.uints["activated"] = 9;
-  r.store.uints["soft"] = 9;
-  r.store.uints["softseen"] = 9;
-  r.slots.invalidSlot = true;
-  Updater u = r.make();
-  const BootInfo info = u.onBoot();
-  EXPECT_TRUE(info.rolledBack);
-  EXPECT_FALSE(info.forgiven);
-  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
-  EXPECT_EQ(r.store.uints.count("soft"), 0u);
-}
-
-TEST(Boot, ACrashOrHangRollbackIsBlacklistedEvenAfterAForgiveness) {
-  Rig r;
-  r.store.uints["pending"] = 9;
-  r.store.uints["activated"] = 9;
-  r.store.uints["softseen"] = 9;  // no "soft" record: the board did not restart itself
-  r.slots.invalidSlot = true;
-  Updater u = r.make();
-  EXPECT_FALSE(u.onBoot().forgiven);
-  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
-}
-
-TEST(Boot, ForgivenessFallsBackToBlacklistWhenItCannotBeRecorded) {
-  Rig r;
-  r.store.uints["pending"] = 9;
-  r.store.uints["activated"] = 9;
-  r.store.uints["soft"] = 9;
-  r.slots.invalidSlot = true;
-  r.store.failWrites = true;  // nothing can be written, so nothing is claimed as handled
-  Updater u = r.make();
-  const BootInfo info = u.onBoot();
-  EXPECT_FALSE(info.forgiven);
-  EXPECT_FALSE(info.rolledBack);
-}
-
-TEST(Confirm, ConfirmingClearsTheForgivenessRecord) {
-  Rig r;
-  r.slots.state = SlotState::kPendingVerify;
-  r.store.uints["pending"] = kRunning;
-  r.store.uints["softseen"] = kRunning;
-  Updater u = r.make();
-  ASSERT_TRUE(u.confirmBoot());
-  EXPECT_EQ(r.store.uints.count("softseen"), 0u);
-}
-
 TEST(NoteUnhealthy, RecordsTheRunningBuildWhileItIsUnconfirmed) {
   Rig r;
   r.slots.state = SlotState::kPendingVerify;
   Updater u = r.make();
-  EXPECT_TRUE(u.noteUnhealthy(false));
-  EXPECT_EQ(r.store.uints["soft"], kRunning);
+  EXPECT_TRUE(u.noteUnhealthy());
+  EXPECT_EQ(r.store.uints["unconfirmed"], kRunning);
 }
 
-TEST(NoteUnhealthy, RecordsAWifiOutageSeparately) {
-  Rig r;
-  r.slots.state = SlotState::kPendingVerify;
-  Updater u = r.make();
-  EXPECT_TRUE(u.noteUnhealthy(true));
-  EXPECT_EQ(r.store.uints["netdown"], kRunning);
-  EXPECT_EQ(r.store.uints.count("soft"), 0u);
-}
-
-TEST(Boot, ARollbackWhileWifiWasDownIsNeverHeldAgainstTheBuild) {
+TEST(Boot, ARestartForWantOfConfirmationIsNeverHeldAgainstTheBuild) {
+  // The build stayed up but could not confirm (Wi-Fi down, the host unreachable): not a defect.
   Rig r;
   r.store.uints["pending"] = 9;
   r.store.uints["activated"] = 9;
-  r.store.uints["netdown"] = 9;
-  r.store.uints["softseen"] = 9;  // even a build already forgiven for something else
+  r.store.uints["unconfirmed"] = 9;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  for (int i = 0; i < 3; ++i) {  // however often it happens
+    const BootInfo info = u.onBoot();
+    EXPECT_TRUE(info.rolledBack);
+    EXPECT_TRUE(info.forgiven);
+    EXPECT_EQ(info.rolledBackBuild, 9u);
+    OtaState s(r.store);
+    EXPECT_FALSE(s.isBlacklisted(9));
+    EXPECT_EQ(s.pending(), 0u);
+    EXPECT_EQ(r.store.uints.count("unconfirmed"), 0u);
+    r.store.uints["pending"] = 9;  // the build is installed again and again fails to confirm
+    r.store.uints["activated"] = 9;
+    r.store.uints["unconfirmed"] = 9;
+  }
+}
+
+TEST(Boot, ACrashIsBlacklistedBecauseItLeavesNoUnconfirmedRecord) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
   r.slots.invalidSlot = true;
   Updater u = r.make();
   const BootInfo info = u.onBoot();
   EXPECT_TRUE(info.rolledBack);
-  EXPECT_TRUE(info.forgiven);
-  EXPECT_EQ(info.rolledBackBuild, 9u);
-  OtaState s(r.store);
-  EXPECT_FALSE(s.isBlacklisted(9));
-  EXPECT_EQ(s.pending(), 0u);
-  EXPECT_EQ(r.store.uints["softseen"], 9u);  // the one-time forgiveness is not consumed
-  EXPECT_EQ(r.store.uints.count("netdown"), 0u);
+  EXPECT_FALSE(info.forgiven);
+  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
 }
 
-TEST(Boot, AWifiOutageRecordForAnotherBuildDoesNotShieldACrash) {
+TEST(Boot, AnUnconfirmedRecordForAnotherBuildDoesNotShieldACrash) {
   Rig r;
   r.store.uints["pending"] = 9;
   r.store.uints["activated"] = 9;
-  r.store.uints["netdown"] = 7;
+  r.store.uints["unconfirmed"] = 7;
   r.slots.invalidSlot = true;
   Updater u = r.make();
   EXPECT_FALSE(u.onBoot().forgiven);
   EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
-  EXPECT_EQ(r.store.uints.count("netdown"), 0u);
+  EXPECT_EQ(r.store.uints.count("unconfirmed"), 0u);
 }
 
 TEST(NoteUnhealthy, DoesNothingForAnAlreadyConfirmedImage) {
   Rig r;
   Updater u = r.make();
-  EXPECT_FALSE(u.noteUnhealthy(false));
+  EXPECT_FALSE(u.noteUnhealthy());
   EXPECT_EQ(r.store.writeCount, 0);
 }
 
@@ -224,7 +163,7 @@ TEST(NoteUnhealthy, ReportsAFailedWrite) {
   r.slots.state = SlotState::kPendingVerify;
   r.store.failWrites = true;
   Updater u = r.make();
-  EXPECT_FALSE(u.noteUnhealthy(false));
+  EXPECT_FALSE(u.noteUnhealthy());
 }
 
 TEST(Boot, PendingForOtherBuildWithoutInvalidSlotIsStaleAndCleared) {
