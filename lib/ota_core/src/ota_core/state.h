@@ -39,6 +39,10 @@ class OtaState {
   uint32_t softFailed() const;
   bool setSoftFailed(uint32_t build);
   bool clearSoftFailed();
+  /** Build that restarted itself with Wi-Fi down: the environment's fault, never held against it. */
+  uint32_t netDown() const;
+  bool setNetDown(uint32_t build);
+  bool clearNetDown();
   /** Build already forgiven one unhealthy rollback; a second one blacklists it. */
   uint32_t softForgiven() const;
   bool setSoftForgiven(uint32_t build);

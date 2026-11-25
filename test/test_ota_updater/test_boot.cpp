@@ -168,14 +168,54 @@ TEST(NoteUnhealthy, RecordsTheRunningBuildWhileItIsUnconfirmed) {
   Rig r;
   r.slots.state = SlotState::kPendingVerify;
   Updater u = r.make();
-  EXPECT_TRUE(u.noteUnhealthy());
+  EXPECT_TRUE(u.noteUnhealthy(false));
   EXPECT_EQ(r.store.uints["soft"], kRunning);
+}
+
+TEST(NoteUnhealthy, RecordsAWifiOutageSeparately) {
+  Rig r;
+  r.slots.state = SlotState::kPendingVerify;
+  Updater u = r.make();
+  EXPECT_TRUE(u.noteUnhealthy(true));
+  EXPECT_EQ(r.store.uints["netdown"], kRunning);
+  EXPECT_EQ(r.store.uints.count("soft"), 0u);
+}
+
+TEST(Boot, ARollbackWhileWifiWasDownIsNeverHeldAgainstTheBuild) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.store.uints["netdown"] = 9;
+  r.store.uints["softseen"] = 9;  // even a build already forgiven for something else
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  const BootInfo info = u.onBoot();
+  EXPECT_TRUE(info.rolledBack);
+  EXPECT_TRUE(info.forgiven);
+  EXPECT_EQ(info.rolledBackBuild, 9u);
+  OtaState s(r.store);
+  EXPECT_FALSE(s.isBlacklisted(9));
+  EXPECT_EQ(s.pending(), 0u);
+  EXPECT_EQ(r.store.uints["softseen"], 9u);  // the one-time forgiveness is not consumed
+  EXPECT_EQ(r.store.uints.count("netdown"), 0u);
+}
+
+TEST(Boot, AWifiOutageRecordForAnotherBuildDoesNotShieldACrash) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.store.uints["netdown"] = 7;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  EXPECT_FALSE(u.onBoot().forgiven);
+  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
+  EXPECT_EQ(r.store.uints.count("netdown"), 0u);
 }
 
 TEST(NoteUnhealthy, DoesNothingForAnAlreadyConfirmedImage) {
   Rig r;
   Updater u = r.make();
-  EXPECT_FALSE(u.noteUnhealthy());
+  EXPECT_FALSE(u.noteUnhealthy(false));
   EXPECT_EQ(r.store.writeCount, 0);
 }
 
@@ -184,7 +224,7 @@ TEST(NoteUnhealthy, ReportsAFailedWrite) {
   r.slots.state = SlotState::kPendingVerify;
   r.store.failWrites = true;
   Updater u = r.make();
-  EXPECT_FALSE(u.noteUnhealthy());
+  EXPECT_FALSE(u.noteUnhealthy(false));
 }
 
 TEST(Boot, PendingForOtherBuildWithoutInvalidSlotIsStaleAndCleared) {

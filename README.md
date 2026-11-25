@@ -197,7 +197,7 @@ Boards check `https://metarly.app/ota/planeradar/manifest.json` every 6-12 hours
 - **Release candidates.** List a board's 32-hex device hash (printed at boot as `ota: build N, device <hash>`) under `candidates` in the production manifest and publish a per-board manifest at `rc/<hash>.json`. The board installs the candidate if it is newer than production; `promote` later re-signs the same bytes as production.
 - **Crash log.** `GET http://plane-radar.local/api/crash-log` shows the last checkpoint before the previous reset, the reset reason, the pending build and the blacklist.
 
-Release tooling: `scripts/ota_release.py` (`keygen`, `sign`, `promote`, `publish`; see `--help`). Set `-DPLANE_RADAR_BUILD=N` for a release build. The on-device acceptance procedure is in `docs/ota-acceptance.md`.
+Release tooling: `scripts/ota_release.py` (`keygen`, `sign`, `promote`, `publish`; see `--help`). Deploy with `scripts/deploy.py` (`setup` for the setup page, `firmware` for a release directory, `verify` to check what is live); both deploys are dry runs until `--yes`. Set `-DPLANE_RADAR_BUILD=N` for a release build. The on-device acceptance procedure is in `docs/ota-acceptance.md`.
 
 ## Wiring (GC9A01 ↔ ESP32-C3 Super Mini)
 

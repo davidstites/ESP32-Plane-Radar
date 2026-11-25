@@ -35,7 +35,11 @@ BootInfo Updater::onBoot() {
     // invalid slot says nothing about a pending record left by a power cut or a USB flash.
     if (slots_.hasInvalidSlot() && state_.activated() == pending) {
       const bool unhealthy = state_.softFailed() == pending;
-      if (unhealthy && state_.softForgiven() != pending && state_.setSoftForgiven(pending)) {
+      if (state_.netDown() == pending) {
+        info.rolledBack = true;
+        info.forgiven = true;
+        info.rolledBackBuild = pending;
+      } else if (unhealthy && state_.softForgiven() != pending && state_.setSoftForgiven(pending)) {
         info.rolledBack = true;
         info.forgiven = true;
         info.rolledBackBuild = pending;
@@ -45,14 +49,15 @@ BootInfo Updater::onBoot() {
       }
     }
     state_.clearSoftFailed();
+    state_.clearNetDown();
     state_.clearPending();
   }
   return info;
 }
 
-bool Updater::noteUnhealthy() {
+bool Updater::noteUnhealthy(bool networkDown) {
   if (slots_.runningState() != SlotState::kPendingVerify) return false;
-  return state_.setSoftFailed(cfg_.runningBuild);
+  return networkDown ? state_.setNetDown(cfg_.runningBuild) : state_.setSoftFailed(cfg_.runningBuild);
 }
 
 bool Updater::confirmBoot() {

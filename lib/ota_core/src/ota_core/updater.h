@@ -61,9 +61,11 @@ class Updater {
   /**
    * The running, unconfirmed image never became healthy and the caller is about to restart
    * into the old one. Records that, so the rollback is not held against a build that merely
-   * ran while a dependency (the ADS-B API) was down. Returns false if nothing was recorded.
+   * ran while the network was out. `networkDown` (Wi-Fi not connected) is never held against the
+   * build, however often it happens; any other unhealthy restart is forgiven once. A crash or
+   * hang leaves no record and is always blacklisted. Returns false if nothing was recorded.
    */
-  bool noteUnhealthy();
+  bool noteUnhealthy(bool networkDown);
 
   /**
    * One scheduled check: fetch the production manifest, verify it, decide, and install into

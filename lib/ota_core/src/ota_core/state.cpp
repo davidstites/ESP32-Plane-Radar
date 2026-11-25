@@ -14,6 +14,7 @@ constexpr const char* kRcListedKey = "rclisted";
 constexpr const char* kActivatedKey = "activated";
 constexpr const char* kSoftKey = "soft";
 constexpr const char* kSoftSeenKey = "softseen";
+constexpr const char* kNetDownKey = "netdown";
 }  // namespace
 
 uint32_t OtaState::floor() const { return store_.getUInt(kFloorKey, 0); }
@@ -46,6 +47,12 @@ bool OtaState::setSoftFailed(uint32_t build) { return store_.ok() && store_.putU
 bool OtaState::clearSoftFailed() {
   return store_.ok() && (softFailed() == 0 || store_.erase(kSoftKey));
 }
+
+uint32_t OtaState::netDown() const { return store_.getUInt(kNetDownKey, 0); }
+
+bool OtaState::setNetDown(uint32_t build) { return store_.ok() && store_.putUInt(kNetDownKey, build); }
+
+bool OtaState::clearNetDown() { return store_.ok() && (netDown() == 0 || store_.erase(kNetDownKey)); }
 
 uint32_t OtaState::softForgiven() const { return store_.getUInt(kSoftSeenKey, 0); }
 
