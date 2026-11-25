@@ -63,7 +63,8 @@ bool refreshFeeds() {
 // 4 Hz throughout.
 void workerTask(void*) {
   net_schedule::Scheduler scheduler({config::kAdsbFetchIntervalMs, config::kFeedRefreshIntervalMs,
-                                     config::kFeedRetryMs, config::kViewSettleMs});
+                                     config::kFeedRetryMs, config::kViewSettleMs, config::kOtaFirstCheckMs,
+                                     config::kOtaIntervalMs, config::kOtaRetryMs});
   radar_geo::ViewKey last_view = currentView();
   bool last_show_precip = ui::radar::showPrecip();
   for (;;) {
@@ -95,6 +96,11 @@ void workerTask(void*) {
       case net_schedule::Action::kRefreshFeeds:
         scheduler.feedsStarted();
         scheduler.feedsFinished(millis(), refreshFeeds());
+        break;
+      case net_schedule::Action::kCheckOta:
+        // The update service is wired in by a later commit; until then a due check is a no-op.
+        scheduler.otaStarted();
+        scheduler.otaFinished(millis(), true);
         break;
       case net_schedule::Action::kWait:
         vTaskDelay(pdMS_TO_TICKS(scheduler.sleepMs(now)));

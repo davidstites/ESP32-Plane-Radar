@@ -58,6 +58,13 @@ constexpr unsigned long kAdsbFetchIntervalMs = 5000;
 constexpr unsigned long kFeedRefreshIntervalMs = 15UL * 60UL * 1000UL;
 /** Gap before trying the weather feeds again after a failed refresh. */
 constexpr unsigned long kFeedRetryMs = 20UL * 1000UL;
+// Firmware update checks: the first shortly after boot, then every 6 h plus a random extra
+// of up to 6 h so a fleet of boards does not hit the server together. A failed check retries
+// in 30 min.
+constexpr unsigned long kOtaFirstCheckMs = 5UL * 60UL * 1000UL;
+constexpr unsigned long kOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
+constexpr unsigned long kOtaJitterMaxMs = 6UL * 60UL * 60UL * 1000UL;
+constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
 /** A range or location change must stay unchanged this long before the feeds refetch. */
 constexpr unsigned long kViewSettleMs = 3UL * 1000UL;
 /** Redraw cadence; aircraft are dead-reckoned along their track/speed so motion
