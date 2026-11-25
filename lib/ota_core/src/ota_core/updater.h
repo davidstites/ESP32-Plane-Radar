@@ -58,6 +58,14 @@ class Updater {
   bool confirmBoot();
 
   /**
+   * The user asked to go back (the recovery button). Blacklists the running build so it is not
+   * offered again, forgets any pending record, and rolls back to the previous image. The floor
+   * is untouched. Returns false, having changed nothing, when there is no previous image; the
+   * blacklist write is best effort, because a store that cannot be written cannot fetch updates.
+   */
+  bool recover();
+
+  /**
    * One scheduled check: fetch the production manifest, verify it, decide, and install into
    * the other slot if it is a newer build. When that manifest lists this board's hash, the
    * board's release-candidate manifest is fetched too and wins if it is strictly newer; a bad

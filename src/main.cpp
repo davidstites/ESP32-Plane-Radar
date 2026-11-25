@@ -90,6 +90,7 @@ void setup() {
   Serial.println();
   Serial.println("Plane Radar");
   services::ota::init();
+  services::ota::recoveryWindow();
 
   bootButtonInit();
   bootButtonSetLongPressHandler(onBootLongPress);

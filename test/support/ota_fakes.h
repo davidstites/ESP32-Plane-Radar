@@ -70,6 +70,8 @@ class FakeSlots : public ota_core::IOtaSlots {
   bool markFails = false;
   bool beginFails = false;
   bool endFails = false;
+  bool rollbackPossible = true;
+  bool rolledBack = false;
   size_t slotCapacity = 0x1F0000;
   size_t writeLimit = static_cast<size_t>(-1);  // total bytes accepted before writes short
   std::vector<uint8_t> written;
@@ -79,6 +81,11 @@ class FakeSlots : public ota_core::IOtaSlots {
 
   ota_core::SlotState runningState() override { return state; }
   bool hasInvalidSlot() override { return invalidSlot; }
+  bool canRollBack() override { return rollbackPossible; }
+  void rollBackAndReboot() override {
+    note("rollBackAndReboot");
+    rolledBack = true;
+  }
   bool markRunningValid() override {
     note("markRunningValid");
     if (markFails) return false;

@@ -49,6 +49,14 @@ bool Updater::manifestPath(char* path, size_t cap) const {
   return n >= 0 && static_cast<size_t>(n) < cap;
 }
 
+bool Updater::recover() {
+  if (!slots_.canRollBack()) return false;
+  state_.blacklist(cfg_.runningBuild);
+  state_.clearPending();
+  slots_.rollBackAndReboot();
+  return true;
+}
+
 bool Updater::confirmBoot() {
   const bool pendingVerify = slots_.runningState() == SlotState::kPendingVerify;
   // A valid image that still has its pending record had its floor write interrupted: finish it.

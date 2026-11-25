@@ -63,6 +63,10 @@ ota_core::SlotState EspSlots::runningState() {
 
 bool EspSlots::hasInvalidSlot() { return esp_ota_get_last_invalid_partition() != nullptr; }
 
+bool EspSlots::canRollBack() { return esp_ota_check_rollback_is_possible(); }
+
+void EspSlots::rollBackAndReboot() { esp_ota_mark_app_invalid_rollback_and_reboot(); }
+
 bool EspSlots::markRunningValid() { return esp_ota_mark_app_valid_cancel_rollback() == ESP_OK; }
 
 bool EspSlots::beginUpdate(size_t size) { return Update.begin(size); }

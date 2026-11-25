@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -231,4 +232,44 @@ TEST(Confirm, ReportsFailureWhenTheFloorWriteFails) {
   Updater u = r.make();
   r.store.failWrites = true;  // marking succeeds, the floor write does not
   EXPECT_FALSE(u.confirmBoot());
+}
+
+TEST(Recover, BlacklistsTheRunningBuildThenRollsBack) {
+  Rig r;
+  r.store.uints["floor"] = kRunning;  // the build had confirmed
+  Updater u = r.make();
+  EXPECT_TRUE(u.recover());
+  EXPECT_TRUE(OtaState(r.store).isBlacklisted(kRunning));
+  EXPECT_TRUE(r.slots.rolledBack);
+  const auto at = [&](const char* entry) { return std::find(r.log.begin(), r.log.end(), entry) - r.log.begin(); };
+  EXPECT_LT(at("putBytes:blacklist"), at("rollBackAndReboot"));  // recorded first
+  EXPECT_EQ(OtaState(r.store).floor(), kRunning);                              // the floor never drops
+}
+
+TEST(Recover, ClearsAnyPendingRecord) {
+  Rig r;
+  r.store.uints["pending"] = kRunning;
+  r.store.uints["activated"] = kRunning;
+  Updater u = r.make();
+  EXPECT_TRUE(u.recover());
+  EXPECT_EQ(OtaState(r.store).pending(), 0u);
+  EXPECT_EQ(r.store.uints.count("activated"), 0u);
+}
+
+TEST(Recover, WithNoPreviousImageChangesNothing) {
+  Rig r;
+  r.slots.rollbackPossible = false;
+  Updater u = r.make();
+  EXPECT_FALSE(u.recover());
+  EXPECT_FALSE(r.slots.rolledBack);
+  EXPECT_FALSE(OtaState(r.store).isBlacklisted(kRunning));
+  EXPECT_EQ(r.store.writeCount, 0);
+}
+
+TEST(Recover, StillRollsBackWhenTheBlacklistCannotBeWritten) {
+  Rig r;
+  r.store.failWrites = true;  // a broken store cannot fetch updates either, so nothing reinstalls it
+  Updater u = r.make();
+  EXPECT_TRUE(u.recover());
+  EXPECT_TRUE(r.slots.rolledBack);
 }

@@ -73,6 +73,13 @@ constexpr unsigned long kOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaJitterMaxMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
 /** A freshly installed build that has run this long since boot is confirmed. No network involved. */
+/**
+ * Recovery: BOOT held for kOtaRecoveryHoldMs, pressed within kOtaRecoveryWindowMs of power-up,
+ * switches back to the previous firmware. (Holding BOOT through reset enters the ROM download
+ * mode instead, so the press must come just after power-up.)
+ */
+constexpr unsigned long kOtaRecoveryWindowMs = 2500UL;
+constexpr unsigned long kOtaRecoveryHoldMs = 3000UL;
 constexpr unsigned long kOtaConfirmAfterMs = 60UL * 1000UL;
 /** Update server and the directory on it holding manifest.json, images and rc/ manifests. */
 constexpr char kOtaHost[] = "metarly.app";

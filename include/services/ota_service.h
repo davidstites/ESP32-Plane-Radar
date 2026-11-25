@@ -14,6 +14,14 @@ namespace services::ota {
  */
 void init();
 
+/**
+ * Call right after init(), before the display and Wi-Fi code. Watches BOOT for the first
+ * kOtaRecoveryWindowMs after power-up; if it is held for kOtaRecoveryHoldMs the running build
+ * is blacklisted and the board restarts into the previous firmware. Does not return in that
+ * case; otherwise it returns once the window has passed and the button is up.
+ */
+void recoveryWindow();
+
 /** Run one update check. The caller must have closed other TLS sessions first. */
 ota_core::CheckResult checkNow();
 

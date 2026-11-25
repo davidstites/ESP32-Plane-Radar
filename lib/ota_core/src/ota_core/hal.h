@@ -31,6 +31,10 @@ class IOtaSlots {
   virtual SlotState runningState() = 0;
   /** True when the other slot holds an image the bootloader rolled back from. */
   virtual bool hasInvalidSlot() = 0;
+  /** True when a previous firmware image exists that the bootloader would run. */
+  virtual bool canRollBack() = 0;
+  /** Mark the running image invalid and restart into the previous one. Does not return on a device. */
+  virtual void rollBackAndReboot() = 0;
   virtual bool markRunningValid() = 0;
   virtual bool beginUpdate(size_t size) = 0;
   virtual size_t writeUpdate(const uint8_t* data, size_t len) = 0;

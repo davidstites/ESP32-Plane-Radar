@@ -66,6 +66,32 @@ void init() {
   }
 }
 
+void recoveryWindow() {
+  if (s_updater == nullptr) {
+    return;
+  }
+  pinMode(config::kBootPin, INPUT_PULLUP);
+  bool held = false;
+  unsigned long heldSince = 0;
+  while (held || millis() < config::kOtaRecoveryWindowMs) {
+    if (digitalRead(config::kBootPin) == LOW) {
+      if (!held) {
+        held = true;
+        heldSince = millis();
+      } else if (millis() - heldSince >= config::kOtaRecoveryHoldMs) {
+        Serial.println("ota: recovery button held; returning to the previous firmware");
+        if (!s_updater->recover()) {
+          Serial.println("ota: no previous firmware to return to");
+        }
+        return;  // only reached when recovery was not possible
+      }
+    } else {
+      held = false;
+    }
+    delay(10);
+  }
+}
+
 ota_core::CheckResult checkNow() {
   if (s_updater == nullptr) {
     return ota_core::CheckResult{ota_core::Outcome::kFailed, "store_unavailable", 0, false};
