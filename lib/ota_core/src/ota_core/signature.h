@@ -34,7 +34,10 @@ void computeDeviceId(const uint8_t mac6[6], uint8_t out[kDeviceIdBytes]);
 /** First 16 bytes of the id as 32 lowercase hex characters plus NUL. */
 void deviceHashHex(const uint8_t id[kDeviceIdBytes], char out[33]);
 
-/** Assemble the 91-byte signed payload. Prod signs zeros in place of the device id. */
+/**
+ * Assemble the 91-byte signed payload. Prod signs zeros in the 32-byte id field; rc signs the
+ * first 16 bytes of `deviceId` (the published hash) followed by 16 zero bytes.
+ */
 size_t buildPayload(const uint8_t sha[kShaBytes], uint32_t build, uint32_t minBuild, Channel channel,
                     const uint8_t deviceId[kDeviceIdBytes], uint8_t out[kPayloadBytes]);
 

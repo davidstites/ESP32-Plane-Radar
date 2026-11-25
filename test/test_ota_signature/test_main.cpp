@@ -61,7 +61,8 @@ TEST(Payload, LayoutIsExact) {
   ASSERT_EQ(buildPayload(v::kSha, v::kBuild, v::kMinBuild, Channel::kRc, v::kDeviceId, out), kPayloadBytes);
   EXPECT_EQ(0, memcmp(out, v::kPayloadRc, kPayloadBytes));
   EXPECT_EQ(out[58], 0x02);
-  EXPECT_EQ(0, memcmp(out + 59, v::kDeviceId, 32));
+  EXPECT_EQ(0, memcmp(out + 59, v::kDeviceId, 16));  // the published hash...
+  EXPECT_EQ(0, memcmp(out + 75, kZeroId, 16));       // ...padded with zeros
 }
 
 TEST(Payload, ProdIgnoresTheDeviceIdArgument) {

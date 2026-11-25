@@ -14,6 +14,7 @@ constexpr size_t kMagicBytes = sizeof(kMagic);
 constexpr char kDevIdPrefix[] = "PLANERADAR-DEVID-v1";
 constexpr size_t kDevIdPrefixBytes = sizeof(kDevIdPrefix);
 constexpr size_t kSigB64Chars = 88;
+constexpr size_t kPublishedHashBytes = 16;
 
 static_assert(kMagicBytes == 18, "payload magic must be 18 bytes with its NUL");
 static_assert(kMagicBytes + kShaBytes + 4 + 4 + 1 + kDeviceIdBytes == kPayloadBytes, "payload size");
@@ -123,11 +124,10 @@ size_t buildPayload(const uint8_t sha[kShaBytes], uint32_t build, uint32_t minBu
   putBe32(out + 50, build);
   putBe32(out + 54, minBuild);
   out[58] = static_cast<uint8_t>(channel);
-  if (channel == Channel::kRc) {
-    memcpy(out + 59, deviceId, kDeviceIdBytes);
-  } else {
-    memset(out + 59, 0, kDeviceIdBytes);
-  }
+  // The id field is 32 bytes, but only the 16-byte hash a board publishes can be signed by
+  // someone who has not read the board's full id: rc carries that hash, zero-padded.
+  memset(out + 59, 0, kDeviceIdBytes);
+  if (channel == Channel::kRc) memcpy(out + 59, deviceId, kPublishedHashBytes);
   return kPayloadBytes;
 }
 
