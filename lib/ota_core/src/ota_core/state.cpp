@@ -12,7 +12,6 @@ constexpr const char* kEtagKey = "etag";
 constexpr const char* kBootedKey = "booted";
 constexpr const char* kRcListedKey = "rclisted";
 constexpr const char* kActivatedKey = "activated";
-constexpr const char* kUnconfirmedKey = "unconfirmed";
 }  // namespace
 
 uint32_t OtaState::floor() const { return store_.getUInt(kFloorKey, 0); }
@@ -37,14 +36,6 @@ bool OtaState::clearPending() {
 uint32_t OtaState::activated() const { return store_.getUInt(kActivatedKey, 0); }
 
 bool OtaState::setActivated(uint32_t build) { return store_.ok() && store_.putUInt(kActivatedKey, build); }
-
-uint32_t OtaState::unconfirmed() const { return store_.getUInt(kUnconfirmedKey, 0); }
-
-bool OtaState::setUnconfirmed(uint32_t build) { return store_.ok() && store_.putUInt(kUnconfirmedKey, build); }
-
-bool OtaState::clearUnconfirmed() {
-  return store_.ok() && (unconfirmed() == 0 || store_.erase(kUnconfirmedKey));
-}
 
 uint32_t OtaState::bootedBuild() const { return store_.getUInt(kBootedKey, 0); }
 

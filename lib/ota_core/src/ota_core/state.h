@@ -35,14 +35,6 @@ class OtaState {
   uint32_t activated() const;
   bool setActivated(uint32_t build);
 
-  /**
-   * Build that restarted itself because it never confirmed (Wi-Fi down, host unreachable): the
-   * environment's fault, never held against it. A crash or hang leaves no such record. 0 when none.
-   */
-  uint32_t unconfirmed() const;
-  bool setUnconfirmed(uint32_t build);
-  bool clearUnconfirmed();
-
   /** The build that last ran on this board; a change means the image was replaced out of band. */
   uint32_t bootedBuild() const;
   bool setBootedBuild(uint32_t build);

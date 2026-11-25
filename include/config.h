@@ -72,8 +72,8 @@ constexpr unsigned long kOtaFirstCheckMs = 5UL * 60UL * 1000UL;
 constexpr unsigned long kOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaJitterMaxMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
-/** A freshly installed build that is not confirmed this long after boot restarts into the old one. */
-constexpr unsigned long kOtaConfirmDeadlineMs = 10UL * 60UL * 1000UL;
+/** A freshly installed build that has run this long since boot is confirmed. No network involved. */
+constexpr unsigned long kOtaConfirmAfterMs = 60UL * 1000UL;
 /** Update server and the directory on it holding manifest.json, images and rc/ manifests. */
 constexpr char kOtaHost[] = "metarly.app";
 constexpr char kOtaBasePath[] = "/ota/planeradar";

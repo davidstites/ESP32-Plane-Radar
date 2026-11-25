@@ -17,21 +17,10 @@ void init();
 /** Run one update check. The caller must have closed other TLS sessions first. */
 ota_core::CheckResult checkNow();
 
-/** True while the running build is new and not yet confirmed. */
-bool pendingVerify();
-
 /**
- * Health probe for an unconfirmed build, run on the network task where checkNow() would run: one
- * GET of the manifest from the OTA host. On success the build is confirmed (floor raised, marked
- * valid, loop watchdog off) and true is returned. Only a crash or hang blacklists a build;
- * failing to confirm never does.
- */
-bool probeNow();
-
-/**
- * Call from loop(). Arms the loop watchdog once while unconfirmed, and if kOtaConfirmDeadlineMs
- * pass after boot without a confirmation, restarts so the bootloader rolls back (recorded as
- * "unconfirmed", never blacklisted).
+ * Call from loop(). Arms the loop watchdog once while a new build is unconfirmed, and confirms
+ * it after kOtaConfirmAfterMs of running (floor raised, marked valid, watchdog off). The
+ * network is never consulted: only a crash or hang before then rolls back and blacklists.
  */
 void confirmTick();
 

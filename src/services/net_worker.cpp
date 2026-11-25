@@ -68,7 +68,6 @@ void workerTask(void*) {
   net_schedule::Scheduler scheduler({config::kAdsbFetchIntervalMs, config::kFeedRefreshIntervalMs,
                                      config::kFeedRetryMs, config::kViewSettleMs, config::kOtaFirstCheckMs,
                                      config::kOtaIntervalMs, config::kOtaRetryMs});
-  scheduler.setOtaProbing(services::ota::pendingVerify());  // a new build proves itself first
   radar_geo::ViewKey last_view = currentView();
   bool last_show_precip = ui::radar::showPrecip();
   for (;;) {
@@ -107,12 +106,6 @@ void workerTask(void*) {
         services::crash_log::checkpoint("ota_check");
         adsb::closeConnection();  // free the kept-alive TLS session's heap first
         scheduler.otaStarted();
-        if (services::ota::pendingVerify()) {
-          const bool confirmed = services::ota::probeNow();
-          if (confirmed) scheduler.setOtaProbing(false);  // back to the 6-12 h update checks
-          scheduler.otaFinished(millis(), confirmed);
-          break;
-        }
         const ota_core::CheckResult result = services::ota::checkNow();
         scheduler.setOtaJitterMs(esp_random() % config::kOtaJitterMaxMs);
         scheduler.otaFinished(millis(), result.outcome != ota_core::Outcome::kFailed);

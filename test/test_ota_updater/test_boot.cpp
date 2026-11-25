@@ -96,37 +96,6 @@ TEST(Boot, ClearingPendingAlsoClearsItsActivationRecord) {
   EXPECT_EQ(r.store.uints.count("activated"), 0u);
 }
 
-TEST(NoteUnhealthy, RecordsTheRunningBuildWhileItIsUnconfirmed) {
-  Rig r;
-  r.slots.state = SlotState::kPendingVerify;
-  Updater u = r.make();
-  EXPECT_TRUE(u.noteUnhealthy());
-  EXPECT_EQ(r.store.uints["unconfirmed"], kRunning);
-}
-
-TEST(Boot, ARestartForWantOfConfirmationIsNeverHeldAgainstTheBuild) {
-  // The build stayed up but could not confirm (Wi-Fi down, the host unreachable): not a defect.
-  Rig r;
-  r.store.uints["pending"] = 9;
-  r.store.uints["activated"] = 9;
-  r.store.uints["unconfirmed"] = 9;
-  r.slots.invalidSlot = true;
-  Updater u = r.make();
-  for (int i = 0; i < 3; ++i) {  // however often it happens
-    const BootInfo info = u.onBoot();
-    EXPECT_TRUE(info.rolledBack);
-    EXPECT_TRUE(info.forgiven);
-    EXPECT_EQ(info.rolledBackBuild, 9u);
-    OtaState s(r.store);
-    EXPECT_FALSE(s.isBlacklisted(9));
-    EXPECT_EQ(s.pending(), 0u);
-    EXPECT_EQ(r.store.uints.count("unconfirmed"), 0u);
-    r.store.uints["pending"] = 9;  // the build is installed again and again fails to confirm
-    r.store.uints["activated"] = 9;
-    r.store.uints["unconfirmed"] = 9;
-  }
-}
-
 TEST(Boot, ACrashIsBlacklistedBecauseItLeavesNoUnconfirmedRecord) {
   Rig r;
   r.store.uints["pending"] = 9;
@@ -135,35 +104,7 @@ TEST(Boot, ACrashIsBlacklistedBecauseItLeavesNoUnconfirmedRecord) {
   Updater u = r.make();
   const BootInfo info = u.onBoot();
   EXPECT_TRUE(info.rolledBack);
-  EXPECT_FALSE(info.forgiven);
   EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
-}
-
-TEST(Boot, AnUnconfirmedRecordForAnotherBuildDoesNotShieldACrash) {
-  Rig r;
-  r.store.uints["pending"] = 9;
-  r.store.uints["activated"] = 9;
-  r.store.uints["unconfirmed"] = 7;
-  r.slots.invalidSlot = true;
-  Updater u = r.make();
-  EXPECT_FALSE(u.onBoot().forgiven);
-  EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
-  EXPECT_EQ(r.store.uints.count("unconfirmed"), 0u);
-}
-
-TEST(NoteUnhealthy, DoesNothingForAnAlreadyConfirmedImage) {
-  Rig r;
-  Updater u = r.make();
-  EXPECT_FALSE(u.noteUnhealthy());
-  EXPECT_EQ(r.store.writeCount, 0);
-}
-
-TEST(NoteUnhealthy, ReportsAFailedWrite) {
-  Rig r;
-  r.slots.state = SlotState::kPendingVerify;
-  r.store.failWrites = true;
-  Updater u = r.make();
-  EXPECT_FALSE(u.noteUnhealthy());
 }
 
 TEST(Boot, PendingForOtherBuildWithoutInvalidSlotIsStaleAndCleared) {

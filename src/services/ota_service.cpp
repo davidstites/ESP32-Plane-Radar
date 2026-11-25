@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <Ed25519.h>
 #include <atomic>
-#include <WiFi.h>
 #include <esp_ota_ops.h>
 
 #include "config.h"
@@ -59,8 +58,8 @@ void init() {
                 hash, runningSlotLabel(), s_store.ok() ? "ok" : "UNAVAILABLE");
   Serial.printf("ota: %s\n", kBuildMarker);
   if (info.rolledBack) {
-    Serial.printf("ota: build %u was rolled back; %s\n", static_cast<unsigned>(info.rolledBackBuild),
-                  info.forgiven ? "not blacklisted, it never became healthy (network)" : "blacklisted");
+    Serial.printf("ota: build %u failed and was rolled back; blacklisted\n",
+                  static_cast<unsigned>(info.rolledBackBuild));
   }
   if (s_pending_verify.load()) {
     Serial.println("ota: new build awaiting confirmation");
@@ -77,23 +76,6 @@ ota_core::CheckResult checkNow() {
   return res;
 }
 
-bool pendingVerify() { return s_pending_verify.load(); }
-
-bool probeNow() {
-  if (!s_pending_verify.load() || s_updater == nullptr) {
-    return false;
-  }
-  const bool reached = WiFi.status() == WL_CONNECTED && s_updater->probe();
-  Serial.printf("ota: health probe %s\n", reached ? "ok" : "failed");
-  if (!reached || !s_updater->confirmBoot()) {
-    return false;
-  }
-  s_pending_verify.store(false);
-  disableLoopWDT();
-  Serial.println("ota: new build confirmed");
-  return true;
-}
-
 void confirmTick() {
   if (!s_pending_verify.load() || s_updater == nullptr) {
     return;
@@ -104,10 +86,12 @@ void confirmTick() {
     enableLoopWDT();  // a hung loop() resets, and the bootloader then rolls back
     s_wdt_armed = true;
   }
-  if (millis() >= config::kOtaConfirmDeadlineMs) {
-    Serial.println("ota: new build never confirmed; restarting into the old one (not blacklisted)");
-    s_updater->noteUnhealthy();
-    esp_restart();
+  // Confirmation is local only: the build started and kept running. The network is never a
+  // health criterion, so being offline before, during or after an update never rolls back.
+  if (millis() >= config::kOtaConfirmAfterMs && s_updater->confirmBoot()) {
+    s_pending_verify.store(false);
+    disableLoopWDT();
+    Serial.println("ota: new build confirmed");
   }
 }
 

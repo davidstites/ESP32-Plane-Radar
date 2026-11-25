@@ -42,7 +42,7 @@ unsigned long Scheduler::otaRemaining(unsigned long now_ms) const {
     return ULONG_MAX;
   }
   return ota_ever_ ? remaining(now_ms, last_ota_ms_, ota_gap_ms_)
-                   : remaining(now_ms, 0UL, ota_probing_ ? kOtaProbeFirstMs : config_.ota_first_ms);
+                   : remaining(now_ms, 0UL, config_.ota_first_ms);
 }
 
 Action Scheduler::next(unsigned long now_ms) const {
@@ -71,11 +71,7 @@ void Scheduler::otaFinished(unsigned long now_ms, bool ok) {
   ota_running_ = false;
   ota_ever_ = true;
   last_ota_ms_ = now_ms;
-  if (ota_probing_) {
-    ota_gap_ms_ = kOtaProbeRetryMs;
-  } else {
-    ota_gap_ms_ = ok ? config_.ota_interval_ms + ota_jitter_ms_ : config_.ota_retry_ms;
-  }
+  ota_gap_ms_ = ok ? config_.ota_interval_ms + ota_jitter_ms_ : config_.ota_retry_ms;
 }
 
 void Scheduler::feedsStarted() { view_pending_ = false; }

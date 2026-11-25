@@ -22,7 +22,6 @@ struct BootInfo {
   bool pendingVerify;  // the running image is new and not yet confirmed
   bool rolledBack;     // an update failed and the bootloader reverted it
   uint32_t rolledBackBuild;
-  bool forgiven;  // the build restarted for want of confirmation, not a crash: not blacklisted
 };
 
 enum class Outcome : uint8_t { kNotModified, kNoUpdate, kRejected, kFailed, kInstalled };
@@ -57,20 +56,6 @@ class Updater {
    * floor rises. Returns true without writing anything when the image is already valid.
    */
   bool confirmBoot();
-
-  /**
-   * The running, unconfirmed image never confirmed and the caller is about to restart into the
-   * old one. Records that, so the rollback is not held against the build: only a crash or hang
-   * (which leaves no record) blacklists. Returns false if nothing was recorded.
-   */
-  bool noteUnhealthy();
-
-  /**
-   * Health probe for an unconfirmed image: one GET of the production manifest, true on HTTP 200.
-   * It proves Wi-Fi, DNS, TLS and the host, i.e. that this build can fetch its own fix. It never
-   * installs, ignores the ETag, and does not read the body. Call it where check() would run.
-   */
-  bool probe();
 
   /**
    * One scheduled check: fetch the production manifest, verify it, decide, and install into

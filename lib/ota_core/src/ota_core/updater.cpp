@@ -34,37 +34,19 @@ BootInfo Updater::onBoot() {
     // Only an install that reached endUpdate can have been rolled back; an older rollback's
     // invalid slot says nothing about a pending record left by a power cut or a USB flash.
     if (slots_.hasInvalidSlot() && state_.activated() == pending) {
-      if (state_.unconfirmed() == pending) {
-        info.rolledBack = true;
-        info.forgiven = true;
-        info.rolledBackBuild = pending;
-      } else if (state_.blacklist(pending)) {
+      if (state_.blacklist(pending)) {
         info.rolledBack = true;
         info.rolledBackBuild = pending;
       }
     }
-    state_.clearUnconfirmed();
     state_.clearPending();
   }
   return info;
 }
 
-bool Updater::noteUnhealthy() {
-  if (slots_.runningState() != SlotState::kPendingVerify) return false;
-  return state_.setUnconfirmed(cfg_.runningBuild);
-}
-
 bool Updater::manifestPath(char* path, size_t cap) const {
   const int n = snprintf(path, cap, "%s/manifest.json", cfg_.basePath);
   return n >= 0 && static_cast<size_t>(n) < cap;
-}
-
-bool Updater::probe() {
-  if (!state_.ok()) return false;
-  char path[kPathMax + 1];
-  if (!manifestPath(path, sizeof(path))) return false;
-  memset(&response_, 0, sizeof(response_));
-  return http_.fetchManifest(path, nullptr, response_) && response_.status == 200;
 }
 
 bool Updater::confirmBoot() {
