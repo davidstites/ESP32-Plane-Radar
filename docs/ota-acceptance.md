@@ -1,6 +1,6 @@
 # OTA on-device acceptance
 
-Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25); the items under "Still open" have not. Results are in the table below.
+Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) on 2026-11-26; the items under "Still open" have not. Results are in the table below.
 
 Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. Spike helpers are in `git stash` (`ota-spike`), reference only.
 
@@ -21,7 +21,7 @@ Not covered by this list and worth a look: power cut mid-download, crash before 
 ## Added after the final review (unverified on hardware)
 
 - The manifest GET now uses HTTP/1.0 (`useHTTP10`) so a chunked response cannot appear; confirm a 200 and a 304 against the real host still parse.
-- Confirmation is local only: a new build confirms after 60 s of running (`ota: new build confirmed`), with no network involved. Test it with Wi-Fi off before, during and after an update, across several reboots: it must confirm and never roll back. A crash or hang inside that minute (e.g. a deliberate `abort()` in `loop()`) must roll back and be blacklisted.
+- Confirmation is local only: a new build confirms after 60 s of running (`ota: new build confirmed`), with no network involved. The Wi-Fi outage run is recorded under "Run on 2026-11-26" below. A crash or hang inside that minute (e.g. a deliberate `abort()` in `loop()`) must roll back and be blacklisted.
 - Base path is `/ota/planeradar` (manifest, `firmware-N.bin`, `rc/<hash>.json`).
 - Recovery button: after an update, power-cycle and hold BOOT (pressed just after power-up, never through reset) for 3 s; expect `ota: recovery button held` and a restart into the previous build, which must not reinstall the blacklisted one. With only one image installed expect `no previous firmware to return to` and a normal boot. A normal boot with no button must not be delayed beyond about 2.5 s.
 
@@ -36,7 +36,23 @@ Not covered by this list and worth a look: power cut mid-download, crash before 
 
 - **Real host, 304 (build 7 on `metarly.app`, issue #20):** `metarly.app` sends an `ETag` and answers `If-None-Match` with 304 (`curl -0`, HTTP/1.0, 2026-11-26 04:14 UTC). On the board, the first check 5 minutes after a plain reboot of build 7 (the stored ETag survives a reboot of the same build) logged `ota: check -> not_modified` (20:20:44 local). No Apache change needed.
 
+## Run on 2026-11-26: network outages (issue #22, throwaway key, local HTTPS)
+
+Setup notes: the server stands in for the Wi-Fi outage (refuse the TLS connection, stop the process, or cut the socket mid-image), so the board's radio stayed associated. The test certificate needs a `dNSName` of `192.168.4.67` for an IP host because mbedtls 2.x ignores IP SANs. The manifest `min_build` must stay above 9, and builds 3-5 are blacklisted from earlier tests. Reset the board with `esptool --after hard_reset chip_id`: toggling RTS/DTR by hand landed it in ROM download mode.
+
+| Case | What was done | Result |
+|------|---------------|--------|
+| A. Network off before the update | Three reboots of build 10 with the server refusing the connection (A1), then stopped entirely (A2, A3) | **pass**: each first check logged `fetch_failed`; the board stayed on build 10 in app0, `pending:0`, blacklist unchanged at `[3,4,5]` |
+| B. Dropped mid-download | Server closed the socket after 904,352 of 1,808,704 bytes | **pass after a fix** (below): `ota: check -> download_incomplete (build 11)`, no reset, still app0, other slot untouched. The next check, 30 minutes later, retried and installed |
+| C. Network gone right after install | `ok_once`: the server sent the whole image, then refused everything | **pass** (one run): `installed (build 11)` at 08:25:16, reboot into app1, `new build confirmed` at 08:26:17 (+60 s), `pending:0`, blacklist `[3,4,5]`, no new entry |
+| D. Armed watchdog under Wi-Fi loss | grep of the whole capture (911 lines, 4 reboots into build 10 and one into 11) | no `feedLoopWDT ... 261` and no panic after the fix. A Wi-Fi drop and return was not exercised on its own |
+
+- **Bug found and fixed.** Case B first panicked (`Load access fault` in `TlsHttp::readImage`). Arduino's `HTTPClient::getStreamPtr()` returns `nullptr` once the peer has closed and nothing is buffered, and `readImage` and the manifest loop dereferenced it. Both now check for null; `readImage` returns 0, which `install()` reports as `download_incomplete` and aborts the update. Re-run on hardware: no panic.
+- A `download_incomplete` waits the normal 30 minutes before the next check; only `fetch_failed` uses the 2-minute quick retry.
+- Case C was run once, not across several reboots, and with the server dark rather than the Wi-Fi radio off.
+- Not covered: switching the access point off at the moment the board starts a check.
+
 ## Still open
 
-- Wi-Fi off before, during and after an update (confirmation must still happen).
+- Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.
 - Power cut mid-download; crash before `setup()`; boot delay from the 2.5 s recovery window.
