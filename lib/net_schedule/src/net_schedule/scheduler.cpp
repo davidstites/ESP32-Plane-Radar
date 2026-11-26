@@ -67,11 +67,20 @@ void Scheduler::adsbFinished(unsigned long now_ms) {
   last_adsb_ms_ = now_ms;
 }
 
-void Scheduler::otaFinished(unsigned long now_ms, bool ok) {
+void Scheduler::otaFinished(unsigned long now_ms, bool ok, bool retry_soon) {
   ota_running_ = false;
   ota_ever_ = true;
   last_ota_ms_ = now_ms;
-  ota_gap_ms_ = ok ? config_.ota_interval_ms + ota_jitter_ms_ : config_.ota_retry_ms;
+  if (ok) {
+    ota_quick_retries_ = 0;
+    ota_gap_ms_ = config_.ota_interval_ms + ota_jitter_ms_;
+  } else if (retry_soon && ota_quick_retries_ < kOtaQuickRetries) {
+    ++ota_quick_retries_;
+    ota_gap_ms_ = config_.ota_quick_retry_ms;
+  } else {
+    ota_quick_retries_ = 0;
+    ota_gap_ms_ = config_.ota_retry_ms;
+  }
 }
 
 void Scheduler::feedsStarted() { view_pending_ = false; }

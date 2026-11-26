@@ -189,9 +189,11 @@ def cmd_publish(args):
     dest = args.dest.rstrip("/") + "/"
     base = ["rsync", "-av"]  # macOS rsync rejects --chmod; the server dirs are setgid www-data
     # Images first: a manifest must never be visible before the image it points at.
+    # Allow-lists ending in a catch-all exclude: nothing else in the directory (a private key,
+    # a stray file) can ever reach the public host.
     steps = [
-        base + ["--exclude=*.json", src, dest],
-        base + ["--include=*/", "--include=*.json", "--exclude=*", src, dest],
+        base + ["--include=firmware-*.bin", "--exclude=*", src, dest],
+        base + ["--include=manifest.json", "--include=rc/", "--include=rc/*.json", "--exclude=*", src, dest],
     ]
     if not args.yes:
         for argv in steps:

@@ -13,8 +13,9 @@ namespace {
 constexpr unsigned long kOtaFirst = 300000;       // 5 min
 constexpr unsigned long kOtaInterval = 21600000;  // 6 h
 constexpr unsigned long kOtaRetry = 1800000;      // 30 min
+constexpr unsigned long kOtaQuick = 120000;       // 2 min
 
-constexpr Config kConfig = {5000, 900000, 20000, 3000, kOtaFirst, kOtaInterval, kOtaRetry};
+constexpr Config kConfig = {5000, 900000, 20000, 3000, kOtaFirst, kOtaInterval, kOtaRetry, kOtaQuick};
 
 Scheduler readyScheduler() {
   Scheduler s(kConfig);
@@ -189,6 +190,61 @@ TEST(SchedulerOta, FailureRetriesAfterRetryGapWithoutJitter) {
   s.adsbFinished(kOtaFirst + kOtaRetry - 1);
   EXPECT_NE(s.next(kOtaFirst + kOtaRetry - 1), Action::kCheckOta);
   EXPECT_EQ(s.next(kOtaFirst + kOtaRetry), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, TransientFailureRetriesQuickly) {
+  Scheduler s(kConfig);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, true);
+  s.adsbFinished(kOtaFirst + kOtaQuick - 1);
+  EXPECT_NE(s.next(kOtaFirst + kOtaQuick - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaQuick), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, QuickRetriesAreCappedThenFallBackToTheLongGap) {
+  Scheduler s(kConfig);
+  unsigned long now = kOtaFirst;
+  for (int i = 0; i < net_schedule::kOtaQuickRetries; ++i) {
+    s.otaStarted();
+    s.otaFinished(now, false, true);
+    now += kOtaQuick;
+    s.adsbFinished(now);
+    ASSERT_EQ(s.next(now), Action::kCheckOta) << "quick retry " << i;
+  }
+  s.otaStarted();
+  s.otaFinished(now, false, true);  // the cap is spent: wait the long gap
+  s.adsbFinished(now + kOtaRetry - 1);
+  EXPECT_NE(s.next(now + kOtaRetry - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(now + kOtaRetry), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, SuccessResetsTheQuickRetryCount) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(0);
+  for (int i = 0; i < net_schedule::kOtaQuickRetries; ++i) {
+    s.otaStarted();
+    s.otaFinished(kOtaFirst, false, true);
+  }
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, true);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, true);  // counts as a first quick retry again
+  s.adsbFinished(kOtaFirst + kOtaQuick);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaQuick), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, AnOrdinaryFailureResetsTheQuickRetryCount) {
+  Scheduler s(kConfig);
+  for (int i = 0; i < net_schedule::kOtaQuickRetries; ++i) {
+    s.otaStarted();
+    s.otaFinished(kOtaFirst, false, true);
+  }
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, false);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, true);
+  s.adsbFinished(kOtaFirst + kOtaQuick);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaQuick), Action::kCheckOta);
 }
 
 TEST(SchedulerOta, NotDueWhileACheckIsRunning) {

@@ -249,9 +249,22 @@ class PublishTests(Env):
             self.assertTrue(argv[-2].endswith("/"))
         for argv in (images, manifests):
             self.assertFalse([a for a in argv if a.startswith("--chmod")])  # macOS rsync rejects it
-        self.assertIn("--exclude=*.json", images)
-        self.assertIn("--include=*.json", manifests)
-        self.assertIn("--exclude=*", manifests)
+        self.assertIn("--include=firmware-*.bin", images)
+        self.assertIn("--include=manifest.json", manifests)
+        self.assertIn("--include=rc/*.json", manifests)
+
+    def test_only_an_allow_list_is_uploaded_never_keys(self):
+        # Every pass ends in a catch-all exclude, so a private key left in the release
+        # directory (or any other stray file) is never sent to the public host.
+        with mock.patch("subprocess.run") as run:
+            run.return_value.returncode = 0
+            rel.main(["publish", "--dest", "h:/p", "--dir", self.dir, "--yes"])
+        for call in run.call_args_list:
+            argv = call.args[0]
+            self.assertEqual(argv[argv.index("--exclude=*")], "--exclude=*")
+            self.assertLess(max(i for i, a in enumerate(argv) if a.startswith("--include=")),
+                            argv.index("--exclude=*"))
+            self.assertFalse([a for a in argv if "pem" in a])
 
     def test_rsync_failure_exits_nonzero(self):
         with mock.patch("subprocess.run") as run:

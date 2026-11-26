@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Ed25519.h>
 #include <atomic>
+#include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 
 #include "config.h"
@@ -34,6 +35,7 @@ hardware::EspSlots s_slots;
 hardware::TlsHttp s_http;
 ota_core::Updater* s_updater = nullptr;  // heap: it carries ~4 KB of buffers
 std::atomic<bool> s_pending_verify{false};
+std::atomic<bool> s_check_running{false};
 bool s_wdt_armed = false;
 
 }  // namespace
@@ -92,13 +94,22 @@ void recoveryWindow() {
   }
 }
 
+bool checkRunning() { return s_check_running.load(); }
+
 ota_core::CheckResult checkNow() {
   if (s_updater == nullptr) {
     return ota_core::CheckResult{ota_core::Outcome::kFailed, "store_unavailable", 0, false};
   }
+  Serial.printf("ota: check starting; heap free %u, largest block %u\n", static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+  s_check_running.store(true);
   const ota_core::CheckResult res = s_updater->check();
-  Serial.printf("ota: check -> %s (build %u%s)\n", res.reason, static_cast<unsigned>(res.build),
-                res.candidate ? ", candidate" : "");
+  s_check_running.store(false);
+  Serial.printf("ota: check -> %s (build %u%s); heap free %u (lowest ever %u), largest block %u, stack headroom %u B\n",
+                res.reason, static_cast<unsigned>(res.build), res.candidate ? ", candidate" : "",
+                static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMinFreeHeap()),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+                static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
   return res;
 }
 

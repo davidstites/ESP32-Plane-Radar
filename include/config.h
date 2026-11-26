@@ -72,6 +72,8 @@ constexpr unsigned long kOtaFirstCheckMs = 5UL * 60UL * 1000UL;
 constexpr unsigned long kOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaJitterMaxMs = 6UL * 60UL * 60UL * 1000UL;
 constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
+/** Retry after a failed fetch (usually a TLS memory error); a few in a row, then kOtaRetryMs. */
+constexpr unsigned long kOtaQuickRetryMs = 2UL * 60UL * 1000UL;
 /** A freshly installed build that has run this long since boot is confirmed. No network involved. */
 /**
  * Recovery: BOOT held for kOtaRecoveryHoldMs, pressed within kOtaRecoveryWindowMs of power-up,

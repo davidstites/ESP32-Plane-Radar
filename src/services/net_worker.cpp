@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <esp_random.h>
 
+#include <cstring>
+
 #include <net_schedule/scheduler.h>
 #include <radar_geo/radar_geo.h>
 
@@ -67,7 +69,7 @@ bool refreshFeeds() {
 void workerTask(void*) {
   net_schedule::Scheduler scheduler({config::kAdsbFetchIntervalMs, config::kFeedRefreshIntervalMs,
                                      config::kFeedRetryMs, config::kViewSettleMs, config::kOtaFirstCheckMs,
-                                     config::kOtaIntervalMs, config::kOtaRetryMs});
+                                     config::kOtaIntervalMs, config::kOtaRetryMs, config::kOtaQuickRetryMs});
   radar_geo::ViewKey last_view = currentView();
   bool last_show_precip = ui::radar::showPrecip();
   for (;;) {
@@ -108,7 +110,9 @@ void workerTask(void*) {
         scheduler.otaStarted();
         const ota_core::CheckResult result = services::ota::checkNow();
         scheduler.setOtaJitterMs(esp_random() % config::kOtaJitterMaxMs);
-        scheduler.otaFinished(millis(), result.outcome != ota_core::Outcome::kFailed);
+        const bool failed = result.outcome == ota_core::Outcome::kFailed;
+        // A failed fetch is usually a TLS memory error that clears on the next try.
+        scheduler.otaFinished(millis(), !failed, failed && strcmp(result.reason, "fetch_failed") == 0);
         if (result.outcome == ota_core::Outcome::kInstalled) {
           Serial.println("ota: restarting into the new build");
           vTaskDelay(pdMS_TO_TICKS(500));

@@ -22,6 +22,9 @@ void init();
  */
 void recoveryWindow();
 
+/** True while checkNow() runs: the render loop skips redraws so they cannot take heap mid-handshake. */
+bool checkRunning();
+
 /** Run one update check. The caller must have closed other TLS sessions first. */
 ota_core::CheckResult checkNow();
 

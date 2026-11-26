@@ -21,12 +21,17 @@ struct Config {
   unsigned long ota_interval_ms;
   /** Gap before trying again after a failed check. */
   unsigned long ota_retry_ms;
+  /** Gap before trying again after a transient failure (e.g. a TLS memory error). */
+  unsigned long ota_quick_retry_ms;
 };
 
 /** Longest sleep, so a view change or Wi-Fi state flip is noticed promptly. */
 constexpr unsigned long kMaxSleepMs = 250;
 /** Attempts a feed makes within one refresh before giving up until the retry gap. */
 constexpr int kFeedAttempts = 3;
+
+/** Quick retries after transient check failures before falling back to ota_retry_ms. */
+constexpr int kOtaQuickRetries = 3;
 
 /** Wait before attempt number `attempt` (1 = first retry) within one refresh. */
 constexpr unsigned long retryBackoffMs(int attempt) {
@@ -66,8 +71,11 @@ class Scheduler {
   void setOtaJitterMs(unsigned long jitter_ms) { ota_jitter_ms_ = jitter_ms; }
   /** Call when a check starts; none is due again until otaFinished(). */
   void otaStarted() { ota_running_ = true; }
-  /** Success waits ota_interval_ms plus the jitter; failure waits ota_retry_ms. */
-  void otaFinished(unsigned long now_ms, bool ok);
+  /**
+   * Success waits ota_interval_ms plus the jitter; failure waits ota_retry_ms. A transient
+   * failure (`retry_soon`) waits ota_quick_retry_ms instead, up to kOtaQuickRetries in a row.
+   */
+  void otaFinished(unsigned long now_ms, bool ok, bool retry_soon = false);
 
  private:
   unsigned long adsbRemaining(unsigned long now_ms) const;
@@ -88,6 +96,7 @@ class Scheduler {
   unsigned long ota_jitter_ms_ = 0;
   unsigned long last_ota_ms_ = 0;
   unsigned long ota_gap_ms_ = 0;
+  int ota_quick_retries_ = 0;
 };
 
 }  // namespace net_schedule
