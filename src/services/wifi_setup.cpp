@@ -17,6 +17,7 @@
 #include "config.h"
 #include "hardware/boot_button.h"
 #include "services/crash_log.h"
+#include "services/ota_service.h"
 #include "services/portal_style.h"
 #include "services/radar_location.h"
 #include "services/setup_session.h"
@@ -371,7 +372,7 @@ bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
     }
     bootButtonPollLongPress();
     statusScreenConnectingTick();
-    feedLoopWDT();  // a pending OTA build arms the loop watchdog; this wait is not a hang
+    services::ota::feedLoopWdtIfArmed();  // a pending OTA build arms the loop watchdog; this wait is not a hang
     delay(config::kWifiConnectingFrameMs);
   }
   return wifiLinkUp();

@@ -35,6 +35,12 @@ ota_core::CheckResult checkNow();
  */
 void confirmTick();
 
+/**
+ * Feeds the loop watchdog only while confirmTick() has it armed. Long waits outside loop()
+ * (Wi-Fi connect) call this; feeding an unarmed watchdog logs "Failed to feed WDT! Error: 261".
+ */
+void feedLoopWdtIfArmed();
+
 /** Pending build in NVS (0 when none), the blacklist, and the running slot's label. */
 uint32_t pendingBuild();
 size_t blacklistedBuilds(uint32_t out[8]);
