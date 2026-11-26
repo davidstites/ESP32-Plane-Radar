@@ -14,7 +14,7 @@ Flashing the C3: hold BOOT, tap RESET, release BOOT fully, tap RESET again.
 | 4a | Hang in `loop()` | loop watchdog resets; rolls back | **pass** (`task_wdt: loopTask` at ~19 s, abort, rolled back, blacklisted) |
 | 4b | Hang that blocks the `net` task | no confirmation within 10 min; board restarts; rolls back | superseded: confirmation is local only, so a stuck `net` task deliberately never rolls back |
 | 5 | Release candidate | list the board in the prod manifest, serve `rc/<hash>.json`: board installs it (`candidate`); `promote` the same bytes, board reports `already_current` | **pass** (installed build 5 as candidate, confirmed; after `promote`: `already_current`) |
-| 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | **pass** 2026-11-25 (real key, real host; build 6 installed build 7 at +5 min, confirmed at +59 s, next check `already_current`). Lowest-ever heap 10 KB during the download. 304 not yet seen |
+| 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | **pass** 2026-11-25 (real key, real host; build 6 installed build 7 at +5 min, confirmed at +59 s, next check `already_current`). Lowest-ever heap 10 KB during the download. 304 confirmed 2026-11-25 (see below) |
 
 Not covered by this list and worth a look: power cut mid-download, crash before `setup()`.
 
@@ -28,14 +28,15 @@ Not covered by this list and worth a look: power cut mid-download, crash before 
 ## Run on 2026-11-25 (throwaway key, local HTTPS)
 
 - Recovery button: tap RESET then hold BOOT ~4 s. Board returned to the previous build (build 2 in app0), blacklist `[3,4,5]`, pending 0, reset reason `software`. The next check reported `blacklisted (build 5)` and did not reinstall it.
-- HTTP/1.0 manifest: 200 verified. A 304 was not exercised (the local server sends no ETag).
+- HTTP/1.0 manifest: 200 verified against the local server (it sends no ETag). The 304 is covered by the real-host entry below.
 - **Heap note.** 3 of about 9 checks failed before diagnostics were added: `SSL - Memory allocation failed` at the handshake (`-32512`), a dropped connection, and one `fetch_failed` with no server request. Each recovered on the next scheduled attempt. Lowest-ever free heap during a check is 15-20 KB and the largest free block before a check ranged 32-49 KB, so the handshake is marginal. The check now logs heap before and after.
 - `feedLoopWDT(): Failed to feed WDT! Error: 261` repeats while Wi-Fi connects: the loop watchdog is not armed yet. Harmless noise to be fixed.
 
 - **Real host, first check (build 6 on `metarly.app`):** `SSL - Memory allocation failed` at the handshake with the largest free block at 32,756 B (free heap 82 KB, lowest 24 KB). Fix: a failed fetch retries after 2 minutes (up to 3 times in a row, then 30 minutes), and the render loop skips redraws while a check runs.
 
+- **Real host, 304 (build 7 on `metarly.app`, issue #20):** `metarly.app` sends an `ETag` and answers `If-None-Match` with 304 (`curl -0`, HTTP/1.0, 2026-11-26 04:14 UTC). On the board, the first check 5 minutes after a plain reboot of build 7 (the stored ETag survives a reboot of the same build) logged `ota: check -> not_modified` (20:20:44 local). No Apache change needed.
+
 ## Still open
 
-- A 304 against `metarly.app` (the check after an install is a plain 200; the following one should be `not_modified`).
 - Wi-Fi off before, during and after an update (confirmation must still happen).
 - Power cut mid-download; crash before `setup()`; boot delay from the 2.5 s recovery window.
