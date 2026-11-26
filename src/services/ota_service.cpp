@@ -10,6 +10,7 @@
 #include "hardware/ota_platform.h"
 #include "ota_core/keys.h"
 #include "ota_core/signature.h"
+#include "ota_core/wdt_gate.h"
 
 // Arduino marks the running app valid before setup() unless this returns true. We confirm
 // only after a health check (confirmTick), so a bad build falls back to the old slot.
@@ -36,7 +37,7 @@ hardware::TlsHttp s_http;
 ota_core::Updater* s_updater = nullptr;  // heap: it carries ~4 KB of buffers
 std::atomic<bool> s_pending_verify{false};
 std::atomic<bool> s_check_running{false};
-bool s_wdt_armed = false;
+ota_core::LoopWdtGate s_wdt_gate;
 
 }  // namespace
 
@@ -117,18 +118,24 @@ void confirmTick() {
   if (!s_pending_verify.load() || s_updater == nullptr) {
     return;
   }
-  if (!s_wdt_armed) {
+  if (s_wdt_gate.arm()) {
     // Armed from loop(), not init(): setup() can legitimately block for tens of seconds on
     // Wi-Fi, and the loop watchdog is only fed between loop() calls.
     enableLoopWDT();  // a hung loop() resets, and the bootloader then rolls back
-    s_wdt_armed = true;
   }
   // Confirmation is local only: the build started and kept running. The network is never a
   // health criterion, so being offline before, during or after an update never rolls back.
   if (millis() >= config::kOtaConfirmAfterMs && s_updater->confirmBoot()) {
     s_pending_verify.store(false);
+    s_wdt_gate.disarm();
     disableLoopWDT();
     Serial.println("ota: new build confirmed");
+  }
+}
+
+void feedLoopWdtIfArmed() {
+  if (s_wdt_gate.shouldFeed()) {
+    feedLoopWDT();
   }
 }
 
