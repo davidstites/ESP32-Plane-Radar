@@ -1,6 +1,6 @@
 # OTA on-device acceptance
 
-Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) and the power cuts (issue #23) on 2026-11-26; the items under "Still open" have not. Results are in the table below.
+Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) the power cuts (issue #23) and the crash before `setup()` (issue #24) on 2026-11-26; the items under "Still open" have not. Results are in the table below.
 
 Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. Spike helpers are in `git stash` (`ota-spike`), reference only.
 
@@ -16,7 +16,7 @@ Flashing the C3: hold BOOT, tap RESET, release BOOT fully, tap RESET again.
 | 5 | Release candidate | list the board in the prod manifest, serve `rc/<hash>.json`: board installs it (`candidate`); `promote` the same bytes, board reports `already_current` | **pass** (installed build 5 as candidate, confirmed; after `promote`: `already_current`) |
 | 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | **pass** 2026-11-25 (real key, real host; build 6 installed build 7 at +5 min, confirmed at +59 s, next check `already_current`). Lowest-ever heap 10 KB during the download. 304 confirmed 2026-11-25 (see below) |
 
-Not covered by this list and worth a look: crash before `setup()`. Power cuts are recorded under "Run on 2026-11-26: power cuts".
+Power cuts are recorded under "Run on 2026-11-26: power cuts", the crash before `setup()` under "Run on 2026-11-26: crash before setup()".
 
 ## Added after the final review (unverified on hardware)
 
@@ -66,8 +66,24 @@ Setup: the USB cable was pulled and replugged by hand (the board is USB powered)
 - Cut 2 leaves a pending record but `state.activated()` is never set, so `onBoot` clears it without blacklisting, as designed. A cut *after* `setActivated` and before the 60 s confirmation is a different case: the bootloader still rolls back, and `activated == pending` makes `onBoot` blacklist that build. Not exercised here.
 - Cable pulls hit the reset-to-ROM-download quirk once: `esptool --after hard_reset` left the board in download mode and a manual RESET tap was needed.
 
+## Run on 2026-11-26: crash before setup() (issue #24, throwaway key, local HTTPS)
+
+Setup: the board was on the real-key build 8, which rejects throwaway-signed images, so a throwaway-key build 30 was flashed over USB first (bootloader, partitions, `boot_app0`, app; NVS left as it was). Build 31 differed from 30 only by a temporary, never-committed `const int kCrash = crashInStaticInit();` in `src/hardware/ota_platform.cpp` (`-DCRASH_BEFORE_SETUP`), a namespace-scope static initializer that calls `abort()`, so it dies in the C++ constructors before `setup()` and before any `ota:` line or breadcrumb. The manifest offered build 31 as prod with `min_build` 0.
+
+| Step | Observed | Result |
+|------|----------|--------|
+| Install | 5 min after boot: `check -> installed (build 31)`, `restarting into the new build` | pass |
+| Crash | Boot of app1 prints `abort() was called` and `Rebooting...` with no `Plane Radar` banner and no `ota:` line: no breadcrumb, no `onBoot` | pass |
+| Rollback | Bootloader booted app0 (build 30) on the next reset; `ota: build 31 failed and was rolled back; blacklisted` | pass |
+| `/api/crash-log` | `{"reset":"panic","checkpoint":"ota_check","build":30,"pending":0,"blacklist":[31],"slot":"app0"}` | pass |
+| Next check | `ota: check -> blacklisted (build 31)` (the first two checks, +5 and +7 min, were `fetch_failed` from the marginal handshake heap and retried on the 2 minute schedule; the manifest was fetched on the third) | pass |
+
+- The `checkpoint` (`ota_check`, 300000 ms) in `/api/crash-log` is left over from build 30's own last run: the crashing build wrote none, which is the point of the case.
+- Only the static-initializer variant was run; an `abort()` at the top of `setup()` was not.
+- The recovery-window boot delay (about 2.5 s) was not timed.
+
 ## Still open
 
 - Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.
-- Crash before `setup()`; boot delay from the 2.5 s recovery window.
+- Crash at the top of `setup()` (the static-initializer variant passed); boot delay from the 2.5 s recovery window.
 - A power cut after `setActivated` but inside the 60 s confirmation window (would blacklist a good build).
