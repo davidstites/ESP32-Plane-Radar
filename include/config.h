@@ -4,7 +4,14 @@
 
 #include <driver/gpio.h>
 
+#ifndef PLANE_RADAR_BUILD
+#define PLANE_RADAR_BUILD 1  // release builds override this with -DPLANE_RADAR_BUILD=N
+#endif
+
 namespace config {
+
+/** Monotonic build number compared against the signed manifest's `build`. */
+constexpr uint32_t kFirmwareBuild = PLANE_RADAR_BUILD;
 
 // --- Wi-Fi portal ---
 constexpr char kPortalApName[] = "PlaneRadar-Setup";
@@ -58,6 +65,27 @@ constexpr unsigned long kAdsbFetchIntervalMs = 5000;
 constexpr unsigned long kFeedRefreshIntervalMs = 15UL * 60UL * 1000UL;
 /** Gap before trying the weather feeds again after a failed refresh. */
 constexpr unsigned long kFeedRetryMs = 20UL * 1000UL;
+// Firmware update checks: the first shortly after boot, then every 6 h plus a random extra
+// of up to 6 h so a fleet of boards does not hit the server together. A failed check retries
+// in 30 min.
+constexpr unsigned long kOtaFirstCheckMs = 5UL * 60UL * 1000UL;
+constexpr unsigned long kOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
+constexpr unsigned long kOtaJitterMaxMs = 6UL * 60UL * 60UL * 1000UL;
+constexpr unsigned long kOtaRetryMs = 30UL * 60UL * 1000UL;
+/** Retry after a failed fetch (usually a TLS memory error); a few in a row, then kOtaRetryMs. */
+constexpr unsigned long kOtaQuickRetryMs = 2UL * 60UL * 1000UL;
+/** A freshly installed build that has run this long since boot is confirmed. No network involved. */
+/**
+ * Recovery: BOOT held for kOtaRecoveryHoldMs, pressed within kOtaRecoveryWindowMs of power-up,
+ * switches back to the previous firmware. (Holding BOOT through reset enters the ROM download
+ * mode instead, so the press must come just after power-up.)
+ */
+constexpr unsigned long kOtaRecoveryWindowMs = 2500UL;
+constexpr unsigned long kOtaRecoveryHoldMs = 3000UL;
+constexpr unsigned long kOtaConfirmAfterMs = 60UL * 1000UL;
+/** Update server and the directory on it holding manifest.json, images and rc/ manifests. */
+constexpr char kOtaHost[] = "metarly.app";
+constexpr char kOtaBasePath[] = "/ota/planeradar";
 /** A range or location change must stay unchanged this long before the feeds refetch. */
 constexpr unsigned long kViewSettleMs = 3UL * 1000UL;
 /** Redraw cadence; aircraft are dead-reckoned along their track/speed so motion

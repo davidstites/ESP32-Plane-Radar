@@ -10,7 +10,12 @@ using net_schedule::Scheduler;
 
 namespace {
 
-constexpr Config kConfig = {5000, 900000, 20000, 3000};
+constexpr unsigned long kOtaFirst = 300000;       // 5 min
+constexpr unsigned long kOtaInterval = 21600000;  // 6 h
+constexpr unsigned long kOtaRetry = 1800000;      // 30 min
+constexpr unsigned long kOtaQuick = 120000;       // 2 min
+
+constexpr Config kConfig = {5000, 900000, 20000, 3000, kOtaFirst, kOtaInterval, kOtaRetry, kOtaQuick};
 
 Scheduler readyScheduler() {
   Scheduler s(kConfig);
@@ -62,6 +67,7 @@ TEST(Scheduler, FeedsRunFirstOnceReadyAndBeatAdsb) {
 
 TEST(Scheduler, RefreshesFeedsAfterTheSuccessInterval) {
   Scheduler s = readyScheduler();
+  s.otaFinished(0, true);  // the 15-minute window outlasts the 5-minute first OTA check
   s.feedsFinished(1000, true);
   s.adsbFinished(1000);
   EXPECT_EQ(s.next(1000 + 899999), Action::kPollAdsb);  // adsb due, feeds not yet
@@ -133,6 +139,147 @@ TEST(Scheduler, SurvivesMillisWrapping) {
   s.adsbFinished(near_wrap);
   EXPECT_EQ(s.next(near_wrap + 4999), Action::kWait);  // wraps past ULONG_MAX
   EXPECT_EQ(s.next(near_wrap + 5000), Action::kPollAdsb);
+}
+
+TEST(SchedulerOta, NotDueBeforeFirstDelay) {
+  Scheduler s(kConfig);
+  EXPECT_EQ(s.next(kOtaFirst - 1), Action::kPollAdsb);  // adsb is due, ota is not
+  s.adsbFinished(kOtaFirst - 1);
+  EXPECT_EQ(s.next(kOtaFirst), Action::kCheckOta);
+  EXPECT_NE(s.next(kOtaFirst - 1), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, DueAtFirstDelay) {
+  Scheduler s(kConfig);
+  s.adsbFinished(kOtaFirst - 100);
+  EXPECT_EQ(s.next(kOtaFirst), Action::kCheckOta);
+  EXPECT_EQ(s.next(kOtaFirst + 12345), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, BeatsAdsbAndFeeds) {
+  Scheduler s = readyScheduler();  // feeds ready and never run: due
+  EXPECT_EQ(s.next(kOtaFirst), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, SuccessWaitsIntervalPlusJitter) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(1000000);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, true);
+  s.adsbFinished(kOtaFirst + kOtaInterval + 999999);
+  const unsigned long due = kOtaFirst + kOtaInterval + 1000000;
+  EXPECT_NE(s.next(due - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(due), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, JitterZeroMeansExactInterval) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(0);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, true);
+  s.adsbFinished(kOtaFirst + kOtaInterval - 1);
+  EXPECT_NE(s.next(kOtaFirst + kOtaInterval - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaInterval), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, FailureRetriesAfterRetryGapWithoutJitter) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(1000000);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false);
+  s.adsbFinished(kOtaFirst + kOtaRetry - 1);
+  EXPECT_NE(s.next(kOtaFirst + kOtaRetry - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaRetry), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, TransientFailureRetriesQuickly) {
+  Scheduler s(kConfig);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, true);
+  s.adsbFinished(kOtaFirst + kOtaQuick - 1);
+  EXPECT_NE(s.next(kOtaFirst + kOtaQuick - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaQuick), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, QuickRetriesAreCappedThenFallBackToTheLongGap) {
+  Scheduler s(kConfig);
+  unsigned long now = kOtaFirst;
+  for (int i = 0; i < net_schedule::kOtaQuickRetries; ++i) {
+    s.otaStarted();
+    s.otaFinished(now, false, true);
+    now += kOtaQuick;
+    s.adsbFinished(now);
+    ASSERT_EQ(s.next(now), Action::kCheckOta) << "quick retry " << i;
+  }
+  s.otaStarted();
+  s.otaFinished(now, false, true);  // the cap is spent: wait the long gap
+  s.adsbFinished(now + kOtaRetry - 1);
+  EXPECT_NE(s.next(now + kOtaRetry - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(now + kOtaRetry), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, SuccessResetsTheQuickRetryCount) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(0);
+  for (int i = 0; i < net_schedule::kOtaQuickRetries; ++i) {
+    s.otaStarted();
+    s.otaFinished(kOtaFirst, false, true);
+  }
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, true);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, true);  // counts as a first quick retry again
+  s.adsbFinished(kOtaFirst + kOtaQuick);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaQuick), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, AnOrdinaryFailureResetsTheQuickRetryCount) {
+  Scheduler s(kConfig);
+  for (int i = 0; i < net_schedule::kOtaQuickRetries; ++i) {
+    s.otaStarted();
+    s.otaFinished(kOtaFirst, false, true);
+  }
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, false);
+  s.otaStarted();
+  s.otaFinished(kOtaFirst, false, true);
+  s.adsbFinished(kOtaFirst + kOtaQuick);
+  EXPECT_EQ(s.next(kOtaFirst + kOtaQuick), Action::kCheckOta);
+}
+
+TEST(SchedulerOta, NotDueWhileACheckIsRunning) {
+  Scheduler s(kConfig);
+  s.adsbFinished(kOtaFirst);
+  ASSERT_EQ(s.next(kOtaFirst), Action::kCheckOta);
+  s.otaStarted();
+  EXPECT_NE(s.next(kOtaFirst + 1), Action::kCheckOta);
+  EXPECT_EQ(s.sleepMs(kOtaFirst + 1), 250u);
+}
+
+TEST(SchedulerOta, SurvivesMillisWrap) {
+  Scheduler s(kConfig);
+  s.setOtaJitterMs(0);
+  const unsigned long near_wrap = ULONG_MAX - 1000;
+  s.otaStarted();
+  s.otaFinished(near_wrap, true);
+  s.adsbFinished(near_wrap + kOtaInterval - 1);
+  EXPECT_NE(s.next(near_wrap + kOtaInterval - 1), Action::kCheckOta);
+  EXPECT_EQ(s.next(near_wrap + kOtaInterval), Action::kCheckOta);  // wrapped past ULONG_MAX
+}
+
+TEST(SchedulerOta, SleepShrinksToTheOtaDueTime) {
+  Scheduler s(kConfig);
+  s.adsbFinished(kOtaFirst - 100);
+  EXPECT_EQ(s.sleepMs(kOtaFirst - 50), 50u);
+}
+
+TEST(SchedulerOta, FeedsAndAdsbStillRunAroundIt) {
+  Scheduler s = readyScheduler();
+  s.otaStarted();
+  s.otaFinished(0, true);
+  EXPECT_EQ(s.next(0), Action::kRefreshFeeds);
+  s.feedsFinished(0, true);
+  EXPECT_EQ(s.next(0), Action::kPollAdsb);
 }
 
 TEST(RetryBackoff, GrowsLinearlyAndNeverNegative) {

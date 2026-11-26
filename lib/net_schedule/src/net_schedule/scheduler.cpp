@@ -37,7 +37,18 @@ unsigned long Scheduler::feedsRemaining(unsigned long now_ms) const {
   return left;
 }
 
+unsigned long Scheduler::otaRemaining(unsigned long now_ms) const {
+  if (ota_running_) {
+    return ULONG_MAX;
+  }
+  return ota_ever_ ? remaining(now_ms, last_ota_ms_, ota_gap_ms_)
+                   : remaining(now_ms, 0UL, config_.ota_first_ms);
+}
+
 Action Scheduler::next(unsigned long now_ms) const {
+  if (otaRemaining(now_ms) == 0) {
+    return Action::kCheckOta;
+  }
   if (feedsRemaining(now_ms) == 0) {
     return Action::kRefreshFeeds;
   }
@@ -48,12 +59,28 @@ Action Scheduler::next(unsigned long now_ms) const {
 }
 
 unsigned long Scheduler::sleepMs(unsigned long now_ms) const {
-  return std::min({adsbRemaining(now_ms), feedsRemaining(now_ms), kMaxSleepMs});
+  return std::min({adsbRemaining(now_ms), feedsRemaining(now_ms), otaRemaining(now_ms), kMaxSleepMs});
 }
 
 void Scheduler::adsbFinished(unsigned long now_ms) {
   adsb_ever_ = true;
   last_adsb_ms_ = now_ms;
+}
+
+void Scheduler::otaFinished(unsigned long now_ms, bool ok, bool retry_soon) {
+  ota_running_ = false;
+  ota_ever_ = true;
+  last_ota_ms_ = now_ms;
+  if (ok) {
+    ota_quick_retries_ = 0;
+    ota_gap_ms_ = config_.ota_interval_ms + ota_jitter_ms_;
+  } else if (retry_soon && ota_quick_retries_ < kOtaQuickRetries) {
+    ++ota_quick_retries_;
+    ota_gap_ms_ = config_.ota_quick_retry_ms;
+  } else {
+    ota_quick_retries_ = 0;
+    ota_gap_ms_ = config_.ota_retry_ms;
+  }
 }
 
 void Scheduler::feedsStarted() { view_pending_ = false; }

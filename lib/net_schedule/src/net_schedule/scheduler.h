@@ -5,7 +5,7 @@
 namespace net_schedule {
 
 /** What the single network task should do next. */
-enum class Action { kWait, kPollAdsb, kRefreshFeeds };
+enum class Action { kWait, kPollAdsb, kRefreshFeeds, kCheckOta };
 
 struct Config {
   unsigned long adsb_interval_ms;
@@ -15,12 +15,23 @@ struct Config {
   unsigned long feed_retry_ms;
   /** A view change must stay unchanged this long before the feeds refetch for it. */
   unsigned long view_settle_ms;
+  /** Uptime at which the first firmware-update check runs. */
+  unsigned long ota_first_ms;
+  /** Gap after a successful check, before jitter. */
+  unsigned long ota_interval_ms;
+  /** Gap before trying again after a failed check. */
+  unsigned long ota_retry_ms;
+  /** Gap before trying again after a transient failure (e.g. a TLS memory error). */
+  unsigned long ota_quick_retry_ms;
 };
 
 /** Longest sleep, so a view change or Wi-Fi state flip is noticed promptly. */
 constexpr unsigned long kMaxSleepMs = 250;
 /** Attempts a feed makes within one refresh before giving up until the retry gap. */
 constexpr int kFeedAttempts = 3;
+
+/** Quick retries after transient check failures before falling back to ota_retry_ms. */
+constexpr int kOtaQuickRetries = 3;
 
 /** Wait before attempt number `attempt` (1 = first retry) within one refresh. */
 constexpr unsigned long retryBackoffMs(int attempt) {
@@ -42,7 +53,10 @@ class Scheduler {
   /** The view (center or range) changed: refetch after view_settle_ms of quiet. */
   void onViewChanged(unsigned long now_ms);
 
-  /** Feeds take priority over ADS-B when both are due. */
+  /**
+   * A due firmware check goes first, then feeds, then ADS-B. Checks are rare, and keeping
+   * them in this one task is what keeps TLS sessions from overlapping.
+   */
   Action next(unsigned long now_ms) const;
 
   /** Milliseconds to sleep when next() is kWait; never more than kMaxSleepMs. */
@@ -53,9 +67,20 @@ class Scheduler {
   void feedsStarted();
   void feedsFinished(unsigned long now_ms, bool ok);
 
+  /** Extra delay added to the next successful-check gap, so a fleet does not check in step. */
+  void setOtaJitterMs(unsigned long jitter_ms) { ota_jitter_ms_ = jitter_ms; }
+  /** Call when a check starts; none is due again until otaFinished(). */
+  void otaStarted() { ota_running_ = true; }
+  /**
+   * Success waits ota_interval_ms plus the jitter; failure waits ota_retry_ms. A transient
+   * failure (`retry_soon`) waits ota_quick_retry_ms instead, up to kOtaQuickRetries in a row.
+   */
+  void otaFinished(unsigned long now_ms, bool ok, bool retry_soon = false);
+
  private:
   unsigned long adsbRemaining(unsigned long now_ms) const;
   unsigned long feedsRemaining(unsigned long now_ms) const;
+  unsigned long otaRemaining(unsigned long now_ms) const;
 
   Config config_;
   bool feeds_ready_ = false;
@@ -66,6 +91,12 @@ class Scheduler {
   unsigned long last_feed_ms_ = 0;
   bool view_pending_ = false;
   unsigned long view_changed_ms_ = 0;
+  bool ota_running_ = false;
+  bool ota_ever_ = false;
+  unsigned long ota_jitter_ms_ = 0;
+  unsigned long last_ota_ms_ = 0;
+  unsigned long ota_gap_ms_ = 0;
+  int ota_quick_retries_ = 0;
 };
 
 }  // namespace net_schedule

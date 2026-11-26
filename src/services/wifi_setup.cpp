@@ -16,6 +16,7 @@
 
 #include "config.h"
 #include "hardware/boot_button.h"
+#include "services/crash_log.h"
 #include "services/portal_style.h"
 #include "services/radar_location.h"
 #include "services/setup_session.h"
@@ -284,7 +285,20 @@ void handleLocationRoute() {
   s_wm.server->send(status, "text/html", page);
 }
 
-void registerPortalRoutes() { s_wm.server->on("/location", HTTP_GET, handleLocationRoute); }
+void handleCrashLogRoute() {
+  char json[512];
+  if (services::crash_log::reportJson(json, sizeof(json)) == 0) {
+    s_wm.server->send(500, "text/plain", "report too large");
+    return;
+  }
+  s_wm.server->sendHeader("Cache-Control", "no-store");
+  s_wm.server->send(200, "application/json", json);
+}
+
+void registerPortalRoutes() {
+  s_wm.server->on("/location", HTTP_GET, handleLocationRoute);
+  s_wm.server->on("/api/crash-log", HTTP_GET, handleCrashLogRoute);
+}
 
 void ensureWifiManager() {
   if (s_wm_configured) {
@@ -357,6 +371,7 @@ bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
     }
     bootButtonPollLongPress();
     statusScreenConnectingTick();
+    feedLoopWDT();  // a pending OTA build arms the loop watchdog; this wait is not a hang
     delay(config::kWifiConnectingFrameMs);
   }
   return wifiLinkUp();

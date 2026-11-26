@@ -9,8 +9,10 @@
 #include "hardware/boot_button.h"
 #include "hardware/display.h"
 #include "services/adsb_client.h"
+#include "services/crash_log.h"
 #include "services/metar_client.h"
 #include "services/net_worker.h"
+#include "services/ota_service.h"
 #include "services/precip_client.h"
 #include "services/radar_location.h"
 #include "services/setup_session.h"
@@ -62,7 +64,7 @@ void onRangeTap() {
   Serial.printf("Range: %s (outer ~%.0f km)\n", range_label,
                 ui::radar::rangeCurrent().outer_km);
 
-  if (g_radar_visible && WiFi.status() == WL_CONNECTED) {
+  if (g_radar_visible && WiFi.status() == WL_CONNECTED && !services::ota::checkRunning()) {
     ui::radarDisplayDraw();
   }
 }
@@ -82,10 +84,13 @@ void onBootLongPress() {
 }  // namespace
 
 void setup() {
+  services::crash_log::checkpoint("setup");
   Serial.begin(115200);
   delay(500);
   Serial.println();
   Serial.println("Plane Radar");
+  services::ota::init();
+  services::ota::recoveryWindow();
 
   bootButtonInit();
   bootButtonSetLongPressHandler(onBootLongPress);
@@ -108,6 +113,7 @@ void setup() {
 }
 
 void loop() {
+  services::ota::confirmTick();
   handleBootButton();
   wifiLoop();
 
@@ -135,7 +141,8 @@ void loop() {
     g_wifi_down_since = 0;
     if (!g_radar_visible) {
       showRadarIfConnected();
-    } else if (millis() - g_last_redraw_ms >= config::kRadarRedrawIntervalMs) {
+    } else if (!services::ota::checkRunning() &&
+               millis() - g_last_redraw_ms >= config::kRadarRedrawIntervalMs) {
       // Redraw at 4 Hz with dead-reckoned positions; the ADS-B fetch runs on
       // its own task (adsbFetchTask).
       g_last_redraw_ms = millis();

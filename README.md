@@ -187,6 +187,19 @@ src/
   services/
 ```
 
+## Over-the-air updates
+
+Boards check `https://metarly.app/ota/planeradar/manifest.json` every 6-12 hours (first check 5 minutes after boot) and install a newer build into the idle app slot.
+
+- **Signed.** Each manifest carries an Ed25519 signature over the image's SHA-256, build number, minimum build and channel. Boards hold up to three public keys (`lib/ota_core/src/ota_core/keys.h`); primary and secondary hold the release keys and emergency stays zeroed (a zeroed slot verifies nothing, so a build with all three zeroed accepts no update).
+- **Safe.** The image is hashed before the slot is activated, builds below the stored floor are refused (the floor only rises once a new build has proven itself), and a build that crashes or hangs before it has run for a minute is rolled back by the bootloader and blacklisted. The network is never a health criterion: a board can be offline before, during or after an update, for any number of boots, without a rollback.
+- **Recovery button.** If a build misbehaves, power the board on and, within about two seconds, press and hold **BOOT** for three seconds: it blacklists the running build and restarts into the previous firmware. (Holding BOOT *through* power-up enters the ROM download mode instead, so press it just after.)
+- **Staged.** `rollout` (0-100) in the manifest gates boards by a stable per-board bucket.
+- **Release candidates.** List a board's 32-hex device hash (printed at boot as `ota: build N, device <hash>`) under `candidates` in the production manifest and publish a per-board manifest at `rc/<hash>.json`. The board installs the candidate if it is newer than production; `promote` later re-signs the same bytes as production.
+- **Crash log.** `GET http://plane-radar.local/api/crash-log` shows the last checkpoint before the previous reset, the reset reason, the pending build and the blacklist.
+
+Release tooling: `scripts/ota_release.py` (`keygen`, `sign`, `promote`, `publish`; see `--help`). Deploy with `scripts/deploy.py` (`setup` for the setup page, `firmware` for a release directory, `verify` to check what is live); both deploys are dry runs until `--yes`. Set `-DPLANE_RADAR_BUILD=N` for a release build. The on-device acceptance procedure is in `docs/ota-acceptance.md`.
+
 ## Wiring (GC9A01 ↔ ESP32-C3 Super Mini)
 
 | Display | ESP32-C3 |
@@ -243,6 +256,8 @@ pio run -t merge -e supermini
 ```
 
 Put the board in download mode (hold **BOOT**, tap **RESET**), then flash with Chrome/Edge over USB.
+
+**Two app slots.** The flash is split into two OTA app slots (`app0` and `app1`, 1.94 MiB each) so a new firmware can be written to the idle slot while the running one stays intact. The partition table lives at `0x8000`, so the first flash of any board that ran an older single-slot build must be a full USB flash of the merged image above; an app-only flash will not update the table.
 
 ### CI and releases (GitHub Actions)
 
