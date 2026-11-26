@@ -1,6 +1,6 @@
 # OTA on-device acceptance
 
-Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) on 2026-11-26; the items under "Still open" have not. Results are in the table below.
+Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) and the power cuts (issue #23) on 2026-11-26; the items under "Still open" have not. Results are in the table below.
 
 Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. Spike helpers are in `git stash` (`ota-spike`), reference only.
 
@@ -16,7 +16,7 @@ Flashing the C3: hold BOOT, tap RESET, release BOOT fully, tap RESET again.
 | 5 | Release candidate | list the board in the prod manifest, serve `rc/<hash>.json`: board installs it (`candidate`); `promote` the same bytes, board reports `already_current` | **pass** (installed build 5 as candidate, confirmed; after `promote`: `already_current`) |
 | 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | **pass** 2026-11-25 (real key, real host; build 6 installed build 7 at +5 min, confirmed at +59 s, next check `already_current`). Lowest-ever heap 10 KB during the download. 304 confirmed 2026-11-25 (see below) |
 
-Not covered by this list and worth a look: power cut mid-download, crash before `setup()`.
+Not covered by this list and worth a look: crash before `setup()`. Power cuts are recorded under "Run on 2026-11-26: power cuts".
 
 ## Added after the final review (unverified on hardware)
 
@@ -52,7 +52,22 @@ Setup notes: the server stands in for the Wi-Fi outage (refuse the TLS connectio
 - Case C was run once, not across several reboots, and with the server dark rather than the Wi-Fi radio off.
 - Not covered: switching the access point off at the moment the board starts a check.
 
+## Run on 2026-11-26: power cuts (issue #23, throwaway key, local HTTPS)
+
+Setup: the USB cable was pulled and replugged by hand (the board is USB powered). The server throttled the image (5 KB/s) so the download window was minutes wide. The window after `endUpdate` is milliseconds wide, so a temporary hook in `EspSlots::endUpdate` (never committed) logged `CUTNOW` and held the board for 10 minutes right after `Update.end()` succeeded, before `setActivated`; it fired once per build via an NVS flag. Replug shows reset reason `USB_UART_CHIP_RESET` rather than a power-on reset; the cut itself is real (the chip loses power with the cable).
+
+| Cut point | What was done | Result |
+|-----------|---------------|--------|
+| 1. Mid-download | Cable pulled with the server at 512,000 of 1,808,960 bytes (~28%) | **pass**: booted build 20 in app0, `pending:0`, blacklist unchanged `[3,4,5]`, no rollback line |
+| 2. Just after `endUpdate` | Cable pulled at `CUTNOW`, after the new image was written and activated in otadata | **pass**: booted the old build 22 in app0 (the bootloader treats a never-confirmed `PENDING_VERIFY` image as failed and falls back), no rollback line, `pending:0`, blacklist unchanged `[3,4,5]`, nothing blacklisted |
+| Later install | Next check after each cut | **pass**: after cut 1 the next full download installed build 21 (confirmed); after cut 2 the next check installed build 23 (`installed`, reboot into app1, `new build confirmed`, `pending:0`, blacklist `[3,4,5]`) |
+
+- Cut 2 was first attempted with a 60 s hold; the pull came after it expired, so the install completed and confirmed. It was repeated with a 10 minute hold.
+- Cut 2 leaves a pending record but `state.activated()` is never set, so `onBoot` clears it without blacklisting, as designed. A cut *after* `setActivated` and before the 60 s confirmation is a different case: the bootloader still rolls back, and `activated == pending` makes `onBoot` blacklist that build. Not exercised here.
+- Cable pulls hit the reset-to-ROM-download quirk once: `esptool --after hard_reset` left the board in download mode and a manual RESET tap was needed.
+
 ## Still open
 
 - Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.
-- Power cut mid-download; crash before `setup()`; boot delay from the 2.5 s recovery window.
+- Crash before `setup()`; boot delay from the 2.5 s recovery window.
+- A power cut after `setActivated` but inside the 60 s confirmation window (would blacklist a good build).
