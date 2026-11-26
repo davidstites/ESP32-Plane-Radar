@@ -1,6 +1,6 @@
 # OTA on-device acceptance
 
-Status: steps 1-5 and the recovery button have been run on hardware (2026-11-25); step 6 (real host) and the items under "Still open" have not. Results are in the table below.
+Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25); the items under "Still open" have not. Results are in the table below.
 
 Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. Spike helpers are in `git stash` (`ota-spike`), reference only.
 
@@ -14,7 +14,7 @@ Flashing the C3: hold BOOT, tap RESET, release BOOT fully, tap RESET again.
 | 4a | Hang in `loop()` | loop watchdog resets; rolls back | **pass** (`task_wdt: loopTask` at ~19 s, abort, rolled back, blacklisted) |
 | 4b | Hang that blocks the `net` task | no confirmation within 10 min; board restarts; rolls back | superseded: confirmation is local only, so a stuck `net` task deliberately never rolls back |
 | 5 | Release candidate | list the board in the prod manifest, serve `rc/<hash>.json`: board installs it (`candidate`); `promote` the same bytes, board reports `already_current` | **pass** (installed build 5 as candidate, confirmed; after `promote`: `already_current`) |
-| 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | pending |
+| 6 | Real host | one manifest fetch against `metarly.app` validates with the Mozilla bundle (needs hosting confirmed) | **pass** 2026-11-25 (real key, real host; build 6 installed build 7 at +5 min, confirmed at +59 s, next check `already_current`). Lowest-ever heap 10 KB during the download. 304 not yet seen |
 
 Not covered by this list and worth a look: power cut mid-download, crash before `setup()`.
 
@@ -36,6 +36,6 @@ Not covered by this list and worth a look: power cut mid-download, crash before 
 
 ## Still open
 
-- Real host (`metarly.app`) with the real key (step 6); a 304 against it.
+- A 304 against `metarly.app` (the check after an install is a plain 200; the following one should be `not_modified`).
 - Wi-Fi off before, during and after an update (confirmation must still happen).
 - Power cut mid-download; crash before `setup()`; boot delay from the 2.5 s recovery window.
