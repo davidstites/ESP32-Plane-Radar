@@ -124,9 +124,10 @@ bool TlsHttp::fetchManifest(const char* path, const char* ifNoneMatch, ota_core:
   if (etag.length() <= sizeof(out.etag) - 1) strcpy(out.etag, etag.c_str());
 
   if (code == 200) {
+    // getStreamPtr() is null once the peer has closed and nothing is left to read.
     WiFiClient* stream = http_->getStreamPtr();
     uint32_t last = millis();
-    while (out.bodyLen <= ota_core::kMaxManifestBytes && millis() - last < kIdleTimeoutMs) {
+    while (stream && out.bodyLen <= ota_core::kMaxManifestBytes && millis() - last < kIdleTimeoutMs) {
       if (stream->available()) {
         out.body[out.bodyLen++] = static_cast<char>(stream->read());
         last = millis();
@@ -171,6 +172,7 @@ int64_t TlsHttp::openImage(const char* path) {
 int TlsHttp::readImage(uint8_t* buf, size_t cap) {
   if (!http_) return -1;
   WiFiClient* stream = http_->getStreamPtr();
+  if (!stream) return 0;  // dropped with nothing buffered: the caller reports an incomplete download
   const uint32_t start = millis();
   while (!stream->available()) {
     if (!stream->connected()) return 0;
