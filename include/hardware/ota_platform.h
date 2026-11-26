@@ -50,7 +50,7 @@ class EspSlots : public ota_core::IOtaSlots {
 class TlsHttp : public ota_core::IOtaHttp {
  public:
   TlsHttp();
-  ~TlsHttp() override;
+  ~TlsHttp();
   bool fetchManifest(const char* path, const char* ifNoneMatch, ota_core::ManifestResponse& out) override;
   int64_t openImage(const char* path) override;
   int readImage(uint8_t* buf, size_t cap) override;
