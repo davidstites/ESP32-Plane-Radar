@@ -80,10 +80,25 @@ Setup: the board was on the real-key build 8, which rejects throwaway-signed ima
 
 - The `checkpoint` (`ota_check`, 300000 ms) in `/api/crash-log` is left over from build 30's own last run: the crashing build wrote none, which is the point of the case.
 - Only the static-initializer variant was run; an `abort()` at the top of `setup()` was not.
-- The recovery-window boot delay (about 2.5 s) was not timed.
+
+## Run on 2026-11-26: recovery-window boot delay (issue #25, real key, USB flash)
+
+Setup: temporary, never-committed `millis()` stamps in `setup()` (entry, before and after `recoveryWindow()`, after `displayInit()`, after `wifiSetupConnect()`), printed once at 15 s. Board reset five times per variant with `esptool --after hard_reset`, no button pressed, joining the usual Wi-Fi. Variant B is the same build with `kOtaRecoveryWindowMs` set to 0.
+
+| Stamp (ms since reset) | A. window 2500 ms (5 boots) | B. window 0 (5 boots) |
+|------------------------|-----------------------------|------------------------|
+| `setup()` entered | 302 | 302 |
+| `recoveryWindow()` entered (after `Serial.begin`, `delay(500)`, `ota::init`) | 803 | 803 |
+| `recoveryWindow()` returned | 2503 | 803 |
+| `displayInit()` done | 2717 | 1017 |
+| Wi-Fi connected, radar drawn | 4120, 4217, 4269, 4113, 7086 (outlier, slow join) | 2401, 2456, 2508, 2512, 2507 |
+
+- **A normal boot is delayed by 1.70 s, not 2.5 s.** The window is `millis() < 2500`, counted from reset, so the 0.8 s `setup()` has already spent before it starts is part of it (identical on all 10 boots). Radar-on-screen goes from about 2.5 s to about 4.2 s with the window.
+- **Can it shrink? Not recommended.** The press must come just after power-up (BOOT held through reset enters ROM download mode), and the window is the only time it is read. Cutting it to, say, 1.5 s would leave 0.7 s after `setup()` starts polling for a person to react to a power-up, to save about 1 s on a boot that already takes 4 s to the radar. A hold that has started inside the window keeps running past it, so only the press time is constrained. Left at 2500 ms.
+- Not measured here: boot with the button pressed (the recovery run above covers that).
 
 ## Still open
 
 - Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.
-- Crash at the top of `setup()` (the static-initializer variant passed); boot delay from the 2.5 s recovery window.
+- Crash at the top of `setup()` (the static-initializer variant passed).
 - A power cut after `setActivated` but inside the 60 s confirmation window (would blacklist a good build).
