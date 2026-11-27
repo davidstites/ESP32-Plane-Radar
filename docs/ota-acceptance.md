@@ -136,11 +136,12 @@ Both runs used a 30-minute confirmation window (1800 s) so the cable could be pu
 | Firmware running the boot after the cut | Cable pulled | Result |
 |---|---|---|
 | main (build 52 to 53) | 55 s after boot | `build 53 failed and was rolled back; blacklisted`: a good build was lost. This is the bug. |
-| #35 fix (build 54 to 55) | roughly 6 min after boot | Back on build 54; the next check at 09:05:02 installed build 55 again, so it was not blacklisted. |
+| #35 fix (build 54 to 55) | roughly 6 min after boot | Back on build 54; the next check at 09:05:02 installed build 55 again, so it was not blacklisted. The boot lines were not captured (USB was unplugged). |
+| #35 fix plus the repeated log note (build 56 to 57) | 3 min after boot | Back on build 56 at 09:23:06 and logged `power was cut before the new build was confirmed; it will be tried again`. The check at 09:28:05 repeated the note and at 09:28:25 installed build 57 again. |
 
 - The decision runs in the build the bootloader returns to, so only a baseline that already has the fix benefits.
 - The fix treats `ESP_RST_POWERON` as a power loss. A brownout reset is still treated as a fault, so a cable pull that logs as a brownout on some boards would still blacklist.
-- The fix run's serial capture was disconnected while the cable was out, so the new log line ("power was cut before the new build was confirmed; it will be tried again") was not seen. The reinstall is the evidence.
+- USB drops with the cable, so the boot lines can be missed (the first fix run missed them). The `ota: check starting` line therefore repeats the power-cut note.
 - A bad build that hangs and is then power-cycled by hand is retried rather than blacklisted. The armed loop watchdog normally resets a hang first.
 
 ## Still open
