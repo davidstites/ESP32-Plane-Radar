@@ -2,7 +2,7 @@
 
 Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) the power cuts (issue #23) and the crash before `setup()` (issue #24) on 2026-11-26, and the power cut inside the confirmation window (issue #35) on 2026-11-27; the items under "Still open" have not. Results are in the table below.
 
-Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. Spike helpers are in `git stash` (`ota-spike`), reference only.
+Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. `scripts/ota_rig.py` automates all of it: `init` makes the throwaway keys and certificates, `build N` makes a throwaway image (HEAD plus uncommitted changes, with an optional `--window` for the confirmation time), `upload N` flashes it, `serve N` signs and serves it, and `capture` logs serial across USB resets. The cable pull and the AP power-down stay manual. Spike helpers are in `git stash` (`ota-spike`), reference only.
 
 Flashing the C3: hold BOOT, tap RESET, release BOOT fully, tap RESET again.
 
