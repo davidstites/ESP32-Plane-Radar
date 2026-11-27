@@ -333,8 +333,10 @@ int measureTagBlockWidth(const services::adsb::Aircraft& plane) {
       max_w = w;
     }
   }
-  if (plane.speed[0] != '\0') {
-    const int w = s_draw->textWidth(plane.speed);
+  if (plane.speed_kts != 0) {
+    char speed[16];
+    adsb_parse::formatSpeed(plane, speed, sizeof(speed));
+    const int w = s_draw->textWidth(speed);
     if (w > max_w) {
       max_w = w;
     }
@@ -343,7 +345,7 @@ int measureTagBlockWidth(const services::adsb::Aircraft& plane) {
 }
 
 int tagBlockHeight(const services::adsb::Aircraft& plane) {
-  return s_draw->fontHeight() * (plane.speed[0] != '\0' ? 4 : 3);
+  return s_draw->fontHeight() * (plane.speed_kts != 0 ? 4 : 3);
 }
 
 void drawAircraftTag(const services::adsb::Aircraft& plane, const radar_geo::TagSpot& spot) {
@@ -378,9 +380,11 @@ void drawAircraftTag(const services::adsb::Aircraft& plane, const radar_geo::Tag
   }
   ly += line_h;
 
-  if (plane.speed[0] != '\0') {
+  if (plane.speed_kts != 0) {
+    char speed[16];
+    adsb_parse::formatSpeed(plane, speed, sizeof(speed));
     s_draw->setTextColor(radar::kColorTagAltitude, radar::kColorBackground);
-    s_draw->drawString(plane.speed, anchor_x, ly);
+    s_draw->drawString(speed, anchor_x, ly);
   }
 }
 

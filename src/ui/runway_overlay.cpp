@@ -17,6 +17,7 @@
 #include "hardware/display_font.h"
 #include "hardware/panel_color.h"
 #include "services/metar_client.h"
+#include "radar_geo/bitset.h"
 #include "services/radar_location.h"
 #include "ui/radar_projection.h"
 #include "ui/radar_range.h"
@@ -27,8 +28,8 @@ namespace {
 
 constexpr size_t kMaxAirportLabels = 32;
 
-bool s_in_range[data::large_airports::kAirportCount];
-bool s_label_pending[data::large_airports::kAirportCount];
+radar_geo::Bitset<data::large_airports::kAirportCount> s_in_range;
+radar_geo::Bitset<data::large_airports::kAirportCount> s_label_pending;
 
 // The runways and labels in range only change with the center or the range preset,
 // so they are projected once and replayed every frame instead of rescanning the dataset.
@@ -429,24 +430,24 @@ void rebuildCache(lgfx::LGFXBase& gfx, const radar_geo::ViewKey& view) {
 
   s_cached_runway_count = 0;
   s_cached_label_count = 0;
-  for (size_t i = 0; i < data::large_airports::kAirportCount; ++i) {
-    s_in_range[i] = false;
-    s_label_pending[i] = false;
-  }
+  s_in_range.clear();
+  s_label_pending.clear();
 
   for (size_t i = 0; i < data::large_airports::kRunwayCount; ++i) {
     const auto& rw = data::large_airports::kRunways[i];
     const uint16_t ap_idx = rw.airport_idx;
-    if (!s_in_range[ap_idx]) {
+    if (!s_in_range.test(ap_idx)) {
       const auto& ap = data::large_airports::kAirports[ap_idx];
       float dx_km = 0.0f;
       float dy_km = 0.0f;
       float dist_km = 0.0f;
       radar::offsetKmFromCenter(e7ToDeg(ap.lat_e7), e7ToDeg(ap.lon_e7), &dx_km, &dy_km,
                                 &dist_km);
-      s_in_range[ap_idx] = (dist_km <= radius_km);
+      if (dist_km <= radius_km) {
+        s_in_range.set(ap_idx);
+      }
     }
-    if (!s_in_range[ap_idx]) {
+    if (!s_in_range.test(ap_idx)) {
       continue;
     }
     CachedRunway line;
@@ -456,8 +457,8 @@ void rebuildCache(lgfx::LGFXBase& gfx, const radar_geo::ViewKey& view) {
     if (s_cached_runway_count < kMaxCachedRunways) {
       s_cached_runways[s_cached_runway_count++] = line;
     }
-    if (!s_label_pending[ap_idx] && s_cached_label_count < kMaxAirportLabels) {
-      s_label_pending[ap_idx] = true;
+    if (!s_label_pending.test(ap_idx) && s_cached_label_count < kMaxAirportLabels) {
+      s_label_pending.set(ap_idx);
       cacheAirportLabel(data::large_airports::kAirports[ap_idx]);
     }
   }

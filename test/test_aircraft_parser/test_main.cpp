@@ -122,11 +122,11 @@ TEST(AircraftParserTest, TrackHeadingFallbackOrder) {
 }
 
 TEST(AircraftParserTest, GroundSpeedFallbackOrder) {
-  EXPECT_FLOAT_EQ(parseOne(R"({"lat":1,"lon":2,"gs":100,"tas":200,"ias":300})").gs_knots,
-                  100.0f);
-  EXPECT_FLOAT_EQ(parseOne(R"({"lat":1,"lon":2,"tas":200,"ias":300})").gs_knots, 200.0f);
-  EXPECT_FLOAT_EQ(parseOne(R"({"lat":1,"lon":2,"ias":300})").gs_knots, 300.0f);
-  EXPECT_FLOAT_EQ(parseOne(R"({"lat":1,"lon":2})").gs_knots, 0.0f);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"gs":100,"tas":200,"ias":300})").gs_knots,
+                  100u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"tas":200,"ias":300})").gs_knots, 200u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"ias":300})").gs_knots, 300u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2})").gs_knots, 0u);
 }
 
 TEST(AircraftParserTest, CallsignTrimmedAndHexFallback) {
@@ -152,14 +152,33 @@ TEST(AircraftParserTest, AltitudeTag) {
   EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2})").alt, "");
 }
 
+static std::string speedText(const std::string& plane) {
+  char buf[16];
+  formatSpeed(parseOne(plane), buf, sizeof(buf));
+  return buf;
+}
+
 TEST(AircraftParserTest, SpeedTag) {
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":450.4})").speed, "450 kts");
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":449.6})").speed, "450 kts");
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":0.4})").speed, "");
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"gs":0})").speed, "");
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2})").speed, "");
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"tas":200,"ias":300})").speed, "");
-  EXPECT_STREQ(parseOne(R"({"lat":1,"lon":2,"alt_baro":"ground","gs":12})").speed, "");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2,"gs":450.4})"), "450 kts");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2,"gs":449.6})"), "450 kts");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2,"gs":0.4})"), "");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2,"gs":0})"), "");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2})"), "");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2,"tas":200,"ias":300})"), "");
+  EXPECT_EQ(speedText(R"({"lat":1,"lon":2,"alt_baro":"ground","gs":12})"), "");
+}
+
+TEST(AircraftParserTest, SpeedTagKnotsClampToUint16) {
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"gs":450.4})").speed_kts, 450u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"gs":70000})").speed_kts, 65535u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"gs":70000})").gs_knots, 65535u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"gs":-5})").gs_knots, 0u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"tas":200})").gs_knots, 200u);
+  EXPECT_EQ(parseOne(R"({"lat":1,"lon":2,"tas":200})").speed_kts, 0u);
+}
+
+TEST(AircraftParserTest, AircraftRecordStaysCompact) {
+  EXPECT_LE(sizeof(Aircraft), 48u);
 }
 
 TEST(AircraftParserTest, AltitudeTagFlightLevel) {
