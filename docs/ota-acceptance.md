@@ -97,6 +97,23 @@ Setup: temporary, never-committed `millis()` stamps in `setup()` (entry, before 
 - **Can it shrink? Not recommended.** The press must come just after power-up (BOOT held through reset enters ROM download mode), and the window is the only time it is read. Cutting it to, say, 1.5 s would leave 0.7 s after `setup()` starts polling for a person to react to a power-up, to save about 1 s on a boot that already takes 4 s to the radar. A hold that has started inside the window keeps running past it, so only the press time is constrained. Left at 2500 ms.
 - Not measured here: boot with the button pressed (the recovery run above covers that).
 
+## Run on 2026-11-26: TLS heap margin (issue #26, real key, `metarly.app`)
+
+Setup: a temporary, never-committed hook set the first check to 20 s after boot and called `ESP.restart()` right after it, so each boot was one real-host manifest check (304 or `not_modified`; no download). The same hook was used before and after the change, with the board on build 8.
+
+| | Before (`main`) | After (this change) |
+|---|---|---|
+| Checks | 22 | 24 |
+| `fetch_failed` (`SSL - Memory allocation failed`, -32512) | **7 (32%)** | **0** |
+| Largest free block before a check | 16-61 KB, mostly 32,756 B | 36.8-65.5 KB |
+| Lowest-ever free heap | 20-27 KB | 38-42 KB |
+| Net task stack headroom | about 3 KB | about 3 KB |
+
+- Before the change a failure did not track the largest block (one failed at 61 KB, one passed at 16 KB), so a minimum-largest-block precondition would not have helped.
+- Change: `s_in_range` and `s_label_pending` (two `bool[8818]`) became `radar_geo::Bitset` (17.6 KB to 2.2 KB), and `Aircraft` shrank from 60 to 44 B (`gs_knots` and `pos_age_ms` to `uint16_t`, `alt[12]` to `alt[10]`, the `speed[10]` text replaced by `speed_kts` formatted at draw time). `.bss` went from 68,016 to 50,272 B.
+- The 2-minute retry stays as the backstop. Ruled out: allocating the `Updater` only for a check (it is live during the check, so it frees nothing then), and a stack buffer for the OTA URL (`HTTPClient::begin` copies it into a `String`).
+- Not measured: the download phase (10 KB low earlier, no install in this run) and checks at the usual +5 min after boot instead of +20 s.
+
 ## Still open
 
 - Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.

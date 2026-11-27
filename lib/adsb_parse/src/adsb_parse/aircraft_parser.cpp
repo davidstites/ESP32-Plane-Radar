@@ -75,13 +75,21 @@ float pickGroundSpeed(const JsonObject& plane) {
   return 0.0f;
 }
 
-uint32_t pickPosAgeMs(const JsonObject& plane) {
+uint16_t roundKnots(float knots) {
+  if (knots <= 0.0f) {
+    return 0;
+  }
+  const long rounded = std::lround(knots);
+  return rounded > UINT16_MAX ? UINT16_MAX : static_cast<uint16_t>(rounded);
+}
+
+uint16_t pickPosAgeMs(const JsonObject& plane) {
   float seconds = 0.0f;
   if (!readJsonFloat(plane, "seen_pos", &seconds) || seconds <= 0.0f) {
     return 0;
   }
   const float ms = seconds * 1000.0f;
-  return ms >= static_cast<float>(kMaxPosAgeMs) ? kMaxPosAgeMs : static_cast<uint32_t>(ms);
+  return ms >= static_cast<float>(kMaxPosAgeMs) ? kMaxPosAgeMs : static_cast<uint16_t>(ms);
 }
 
 bool isOnGround(const JsonObject& plane) {
@@ -135,16 +143,12 @@ void formatAltitudeTag(const JsonObject& plane, char* out, size_t out_len) {
   }
 }
 
-void formatSpeedTag(const JsonObject& plane, char* out, size_t out_len) {
-  out[0] = '\0';
+uint16_t pickSpeedTagKnots(const JsonObject& plane) {
   float gs = 0.0f;
   if (isOnGround(plane) || !readJsonFloat(plane, "gs", &gs)) {
-    return;
+    return 0;
   }
-  const long knots = std::lround(gs);
-  if (knots > 0) {
-    snprintf(out, out_len, "%ld kts", knots);
-  }
+  return roundKnots(gs);
 }
 
 void fillTagFields(Aircraft* ac, const JsonObject& plane) {
@@ -155,7 +159,6 @@ void fillTagFields(Aircraft* ac, const JsonObject& plane) {
 
   copyJsonStringTrimmed(plane, "t", ac->type, sizeof(ac->type));
   formatAltitudeTag(plane, ac->alt, sizeof(ac->alt));
-  formatSpeedTag(plane, ac->speed, sizeof(ac->speed));
 }
 
 size_t extractAircraft(JsonDocument& doc, bool include_ground, Aircraft* out,
@@ -176,7 +179,8 @@ size_t extractAircraft(JsonDocument& doc, bool include_ground, Aircraft* out,
     out[n].lon = plane["lon"].as<float>();
     out[n].nose_deg = pickNoseHeading(plane);
     out[n].track_deg = pickTrackHeading(plane);
-    out[n].gs_knots = pickGroundSpeed(plane);
+    out[n].gs_knots = roundKnots(pickGroundSpeed(plane));
+    out[n].speed_kts = pickSpeedTagKnots(plane);
     out[n].pos_age_ms = pickPosAgeMs(plane);
     fillTagFields(&out[n], plane);
     ++n;
@@ -204,6 +208,13 @@ ParseResult parseFiltered(bool include_ground, Aircraft* out, size_t capacity,
 }
 
 }  // namespace
+
+void formatSpeed(const Aircraft& ac, char* out, size_t out_len) {
+  out[0] = '\0';
+  if (ac.speed_kts > 0) {
+    snprintf(out, out_len, "%u kts", static_cast<unsigned>(ac.speed_kts));
+  }
+}
 
 void buildAircraftFilter(JsonDocument& filter) {
   filter.clear();

@@ -14,19 +14,20 @@ struct Aircraft {
   float lon;
   float nose_deg;
   float track_deg;
-  float gs_knots;
+  /** Ground speed in whole knots (gs, else tas, else ias), for dead reckoning and the vector. */
+  uint16_t gs_knots;
   /** Age of the position fix when fetched (ms), from the feed's seen_pos; capped at kMaxPosAgeMs. */
-  uint32_t pos_age_ms;
+  uint16_t pos_age_ms;
+  /** Whole knots shown in the tag; 0 when on the ground or gs is absent or rounds to zero. */
+  uint16_t speed_kts;
   char callsign[9];
   char type[5];
-  char alt[12];
-  /** Reported ground speed ("450 kts"); empty when on the ground or gs is absent or zero. */
-  char speed[10];
+  char alt[10];
 };
 
 constexpr size_t kMaxAircraft = 64;
 /** A staler fix is not extrapolated further, so it isn't flung across the screen. */
-constexpr uint32_t kMaxPosAgeMs = 30000;
+constexpr uint16_t kMaxPosAgeMs = 30000;
 
 /** Outcome of a parse. error is nullptr on success, else a static string. */
 struct ParseResult {
@@ -34,6 +35,9 @@ struct ParseResult {
   size_t count;
   const char* error;
 };
+
+/** Tag text for the speed line ("450 kts"); empty when speed_kts is 0. */
+void formatSpeed(const Aircraft& ac, char* out, size_t out_len);
 
 /** Fill filter with the adsb.fi "ac" keys the firmware reads; all others are dropped. */
 void buildAircraftFilter(JsonDocument& filter);

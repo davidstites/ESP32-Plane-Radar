@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "radar_geo/bitset.h"
 #include "radar_geo/label_spots.h"
 #include "radar_geo/radar_geo.h"
 
@@ -468,4 +469,40 @@ TEST(RadarGeoTest, NextRingKmStepsToLargerPresetThenWraps) {
   EXPECT_FLOAT_EQ(radar_geo::nextRingKm(25.0f, presets, 4), 5.0f);
   EXPECT_FLOAT_EQ(radar_geo::nextRingKm(33.0f, presets, 4), 5.0f);
   EXPECT_FLOAT_EQ(radar_geo::nextRingKm(1.0f, presets, 4), 5.0f);
+}
+
+TEST(BitsetTest, StartsClearAndSetsOnlyTheRequestedBit) {
+  radar_geo::Bitset<20> bits;
+  for (size_t i = 0; i < 20; ++i) {
+    EXPECT_FALSE(bits.test(i));
+  }
+  bits.set(0);
+  bits.set(7);
+  bits.set(8);
+  bits.set(19);
+  EXPECT_TRUE(bits.test(0));
+  EXPECT_TRUE(bits.test(7));
+  EXPECT_TRUE(bits.test(8));
+  EXPECT_TRUE(bits.test(19));
+  EXPECT_FALSE(bits.test(1));
+  EXPECT_FALSE(bits.test(9));
+  EXPECT_FALSE(bits.test(18));
+}
+
+TEST(BitsetTest, SettingTwiceKeepsTheBitAndClearResetsAll) {
+  radar_geo::Bitset<9> bits;
+  bits.set(3);
+  bits.set(3);
+  EXPECT_TRUE(bits.test(3));
+  bits.set(8);
+  bits.clear();
+  for (size_t i = 0; i < 9; ++i) {
+    EXPECT_FALSE(bits.test(i));
+  }
+}
+
+TEST(BitsetTest, UsesOneBitPerIndexRoundedUpToBytes) {
+  EXPECT_EQ(sizeof(radar_geo::Bitset<8>), 1u);
+  EXPECT_EQ(sizeof(radar_geo::Bitset<9>), 2u);
+  EXPECT_EQ(sizeof(radar_geo::Bitset<8818>), 1103u);
 }
