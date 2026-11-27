@@ -79,7 +79,6 @@ Setup: the board was on the real-key build 8, which rejects throwaway-signed ima
 | Next check | `ota: check -> blacklisted (build 31)` (the first two checks, +5 and +7 min, were `fetch_failed` from the marginal handshake heap and retried on the 2 minute schedule; the manifest was fetched on the third) | pass |
 
 - The `checkpoint` (`ota_check`, 300000 ms) in `/api/crash-log` is left over from build 30's own last run: the crashing build wrote none, which is the point of the case.
-- Only the static-initializer variant was run; an `abort()` at the top of `setup()` was not.
 
 ## Run on 2026-11-26: recovery-window boot delay (issue #25, real key, USB flash)
 
@@ -114,8 +113,23 @@ Setup: a temporary, never-committed hook set the first check to 20 s after boot 
 - The 2-minute retry stays as the backstop. Ruled out: allocating the `Updater` only for a check (it is live during the check, so it frees nothing then), and a stack buffer for the OTA URL (`HTTPClient::begin` copies it into a `String`).
 - Not measured: the download phase (10 KB low earlier, no install in this run) and checks at the usual +5 min after boot instead of +20 s.
 
+## Run on 2026-11-26: crash at the top of setup() (throwaway key, local HTTPS)
+
+Setup: the rig from the #24 run (throwaway key, test CA appended to the CA bundle, `kOtaHost` `192.168.4.67:8443`), built in a detached worktree off `main` at `b691d03`. Build 40 was flashed over USB. Build 41 differs only by `volatile int boom = 1; if (boom) abort();` as the first statement of `setup()` (before `crash_log::checkpoint`). A bare `abort()` there lets the linker drop the rest of `setup()`, including the build marker, and `ota_release.py sign` then rejects the image.
+
+| Step | Observed | Result |
+|------|----------|--------|
+| Install | 20:28:46, 4 min after boot: `check -> installed (build 41)`, `restarting into the new build` | pass |
+| Crash | `abort() was called at PC 0x420139b3 on core 0`, `Rebooting...` at 20:28:47, no `Plane Radar` banner, no `ota:` line | pass |
+| Rollback | Bootloader booted app0 (build 40) on the next reset; `ota: build 41 failed and was rolled back; blacklisted` | pass |
+| `/api/crash-log` | `{"reset":"panic","checkpoint":"ota_check","build":40,"pending":0,"blacklist":[31,41],"slot":"app0"}` | pass |
+| Next check | 20:33:48: `ota: check -> blacklisted (build 41)` | pass |
+
+- The `checkpoint` (`ota_check`) is left over from build 40's own last run: build 41 died before it could write `setup`, which is the point of the case.
+- This matches the static-initializer variant above: a crash before `onBoot` ever runs is still recovered by the bootloader and recorded by the next good boot, with a single failed boot and no retry loop.
+- Both checks in this run (the install and the `blacklisted` one) completed on the first handshake.
+
 ## Still open
 
 - Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.
-- Crash at the top of `setup()` (the static-initializer variant passed).
 - A power cut after `setActivated` but inside the 60 s confirmation window (would blacklist a good build).
