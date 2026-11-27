@@ -6,6 +6,7 @@
 #include <WiFiClientSecure.h>
 #include <esp_mac.h>
 #include <esp_ota_ops.h>
+#include <esp_system.h>
 
 #include <cstring>
 
@@ -62,6 +63,8 @@ ota_core::SlotState EspSlots::runningState() {
 }
 
 bool EspSlots::hasInvalidSlot() { return esp_ota_get_last_invalid_partition() != nullptr; }
+
+bool EspSlots::resetWasPowerLoss() { return esp_reset_reason() == ESP_RST_POWERON; }
 
 bool EspSlots::canRollBack() { return esp_ota_check_rollback_is_possible(); }
 

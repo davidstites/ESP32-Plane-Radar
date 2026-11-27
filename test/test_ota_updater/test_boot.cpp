@@ -108,6 +108,31 @@ TEST(Boot, ACrashIsBlacklistedBecauseItLeavesNoUnconfirmedRecord) {
   EXPECT_TRUE(OtaState(r.store).isBlacklisted(9));
 }
 
+TEST(Boot, APowerCutBeforeConfirmationIsRetriedNotBlacklisted) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.slots.invalidSlot = true;
+  r.slots.powerLoss = true;
+  Updater u = r.make();
+  const BootInfo info = u.onBoot();
+  EXPECT_TRUE(info.powerLossRetry);
+  EXPECT_FALSE(info.rolledBack);
+  OtaState s(r.store);
+  EXPECT_FALSE(s.isBlacklisted(9));
+  EXPECT_EQ(s.pending(), 0u);
+  EXPECT_EQ(s.floor(), 0u);
+}
+
+TEST(Boot, ACrashIsNotReportedAsAPowerLossRetry) {
+  Rig r;
+  r.store.uints["pending"] = 9;
+  r.store.uints["activated"] = 9;
+  r.slots.invalidSlot = true;
+  Updater u = r.make();
+  EXPECT_FALSE(u.onBoot().powerLossRetry);
+}
+
 TEST(Boot, PendingForOtherBuildWithoutInvalidSlotIsStaleAndCleared) {
   Rig r;
   r.store.uints["pending"] = 9;

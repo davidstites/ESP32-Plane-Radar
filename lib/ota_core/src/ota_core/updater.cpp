@@ -34,7 +34,11 @@ BootInfo Updater::onBoot() {
     // Only an install that reached endUpdate can have been rolled back; an older rollback's
     // invalid slot says nothing about a pending record left by a power cut or a USB flash.
     if (slots_.hasInvalidSlot() && state_.activated() == pending) {
-      if (state_.blacklist(pending)) {
+      // The bootloader reverts an unconfirmed build after a power cut just as after a crash, but a
+      // power-on reset says the build did nothing wrong, so it stays eligible for the next check.
+      if (slots_.resetWasPowerLoss()) {
+        info.powerLossRetry = true;
+      } else if (state_.blacklist(pending)) {
         info.rolledBack = true;
         info.rolledBackBuild = pending;
       }

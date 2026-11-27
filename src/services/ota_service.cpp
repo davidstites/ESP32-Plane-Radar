@@ -64,6 +64,9 @@ void init() {
     Serial.printf("ota: build %u failed and was rolled back; blacklisted\n",
                   static_cast<unsigned>(info.rolledBackBuild));
   }
+  if (info.powerLossRetry) {
+    Serial.println("ota: power was cut before the new build was confirmed; it will be tried again");
+  }
   if (s_pending_verify.load()) {
     Serial.println("ota: new build awaiting confirmation");
   }

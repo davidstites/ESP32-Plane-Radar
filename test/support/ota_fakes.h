@@ -67,6 +67,7 @@ class FakeSlots : public ota_core::IOtaSlots {
  public:
   ota_core::SlotState state = ota_core::SlotState::kValid;
   bool invalidSlot = false;
+  bool powerLoss = false;
   bool markFails = false;
   bool beginFails = false;
   bool endFails = false;
@@ -81,6 +82,7 @@ class FakeSlots : public ota_core::IOtaSlots {
 
   ota_core::SlotState runningState() override { return state; }
   bool hasInvalidSlot() override { return invalidSlot; }
+  bool resetWasPowerLoss() override { return powerLoss; }
   bool canRollBack() override { return rollbackPossible; }
   void rollBackAndReboot() override {
     note("rollBackAndReboot");
