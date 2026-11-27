@@ -37,6 +37,7 @@ class EspSlots : public ota_core::IOtaSlots {
  public:
   ota_core::SlotState runningState() override;
   bool hasInvalidSlot() override;
+  bool resetWasPowerLoss() override;
   bool canRollBack() override;
   void rollBackAndReboot() override;
   bool markRunningValid() override;

@@ -37,6 +37,7 @@ hardware::TlsHttp s_http;
 ota_core::Updater* s_updater = nullptr;  // heap: it carries ~4 KB of buffers
 std::atomic<bool> s_pending_verify{false};
 std::atomic<bool> s_check_running{false};
+bool s_power_loss_retry = false;  // set at boot; repeated in the check log because the boot lines can be missed
 ota_core::LoopWdtGate s_wdt_gate;
 
 }  // namespace
@@ -63,6 +64,10 @@ void init() {
   if (info.rolledBack) {
     Serial.printf("ota: build %u failed and was rolled back; blacklisted\n",
                   static_cast<unsigned>(info.rolledBackBuild));
+  }
+  s_power_loss_retry = info.powerLossRetry;
+  if (info.powerLossRetry) {
+    Serial.println("ota: power was cut before the new build was confirmed; it will be tried again");
   }
   if (s_pending_verify.load()) {
     Serial.println("ota: new build awaiting confirmation");
@@ -101,8 +106,9 @@ ota_core::CheckResult checkNow() {
   if (s_updater == nullptr) {
     return ota_core::CheckResult{ota_core::Outcome::kFailed, "store_unavailable", 0, false};
   }
-  Serial.printf("ota: check starting; heap free %u, largest block %u\n", static_cast<unsigned>(ESP.getFreeHeap()),
-                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+  Serial.printf("ota: check starting; heap free %u, largest block %u%s\n", static_cast<unsigned>(ESP.getFreeHeap()),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)),
+                s_power_loss_retry ? "; this boot followed a power cut before confirmation" : "");
   s_check_running.store(true);
   const ota_core::CheckResult res = s_updater->check();
   s_check_running.store(false);

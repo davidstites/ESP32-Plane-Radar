@@ -33,6 +33,8 @@ class IOtaSlots {
   virtual SlotState runningState() = 0;
   /** True when the other slot holds an image the bootloader rolled back from. */
   virtual bool hasInvalidSlot() = 0;
+  /** True when this boot followed a power-on reset (supply lost and restored), not a crash or watchdog. */
+  virtual bool resetWasPowerLoss() = 0;
   /** True when a previous firmware image exists that the bootloader would run. */
   virtual bool canRollBack() = 0;
   /** Mark the running image invalid and restart into the previous one. Does not return on a device. */

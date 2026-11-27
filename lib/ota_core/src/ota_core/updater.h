@@ -22,6 +22,7 @@ struct BootInfo {
   bool pendingVerify;  // the running image is new and not yet confirmed
   bool rolledBack;     // an update failed and the bootloader reverted it
   uint32_t rolledBackBuild;
+  bool powerLossRetry;  // power was cut before the new build was confirmed; it is not blacklisted
 };
 
 enum class Outcome : uint8_t { kNotModified, kNoUpdate, kRejected, kFailed, kInstalled };

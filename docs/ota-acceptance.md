@@ -1,6 +1,6 @@
 # OTA on-device acceptance
 
-Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) the power cuts (issue #23) and the crash before `setup()` (issue #24) on 2026-11-26; the items under "Still open" have not. Results are in the table below.
+Status: steps 1-6 and the recovery button have been run on hardware (2026-11-25), and the Wi-Fi outage cases (issue #22) the power cuts (issue #23) and the crash before `setup()` (issue #24) on 2026-11-26, and the power cut inside the confirmation window (issue #35) on 2026-11-27; the items under "Still open" have not. Results are in the table below.
 
 Setup: a C3 on USB, the firmware from this branch built with a throwaway release key in `keys.h` (never the real one), a local HTTPS server using a throwaway CA, and `-DPLANE_RADAR_BUILD=N` / a temporary `config::kOtaHost` pointing at the server. `scripts/ota_release.py` signs the manifests. Spike helpers are in `git stash` (`ota-spike`), reference only.
 
@@ -129,7 +129,21 @@ Setup: the rig from the #24 run (throwaway key, test CA appended to the CA bundl
 - This matches the static-initializer variant above: a crash before `onBoot` ever runs is still recovered by the bootloader and recorded by the next good boot, with a single failed boot and no retry loop.
 - Both checks in this run (the install and the `blacklisted` one) completed on the first handshake.
 
+## Run on 2026-11-27: power cut inside the confirmation window (issue #35, throwaway key, local HTTPS)
+
+Both runs used a 30-minute confirmation window (1800 s) so the cable could be pulled at leisure. The USB cable was pulled and replugged after build N+1 booted as `awaiting confirmation`.
+
+| Firmware running the boot after the cut | Cable pulled | Result |
+|---|---|---|
+| main (build 52 to 53) | 55 s after boot | `build 53 failed and was rolled back; blacklisted`: a good build was lost. This is the bug. |
+| #35 fix (build 54 to 55) | roughly 6 min after boot | Back on build 54; the next check at 09:05:02 installed build 55 again, so it was not blacklisted. The boot lines were not captured (USB was unplugged). |
+| #35 fix plus the repeated log note (build 56 to 57) | 3 min after boot | Back on build 56 at 09:23:06 and logged `power was cut before the new build was confirmed; it will be tried again`. The check at 09:28:05 repeated the note and at 09:28:25 installed build 57 again. |
+
+- The decision runs in the build the bootloader returns to, so only a baseline that already has the fix benefits.
+- The fix treats `ESP_RST_POWERON` as a power loss. A brownout reset is still treated as a fault, so a cable pull that logs as a brownout on some boards would still blacklist.
+- USB drops with the cable, so the boot lines can be missed (the first fix run missed them). The `ota: check starting` line therefore repeats the power-cut note.
+- A bad build that hangs and is then power-cycled by hand is retried rather than blacklisted. The armed loop watchdog normally resets a hang first.
+
 ## Still open
 
 - Case C across several reboots; Wi-Fi radio actually off (AP powered down) during a check and after an install.
-- A power cut after `setActivated` but inside the 60 s confirmation window (would blacklist a good build).
